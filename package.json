@@ -1,0 +1,33 @@
+{
+  "name": "lumora-image-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n WEB,API -c cyan,magenta \"vite\" \"tsx watch server/index.ts\"",
+    "build": "vue-tsc --noEmit && vite build",
+    "start": "tsx server/index.ts"
+  },
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "lucide-vue-next": "1.0.0",
+    "pinia": "4.0.2",
+    "three": "^0.185.1",
+    "vue": "3.5.40",
+    "vue-router": "5.2.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/three": "^0.185.1",
+    "@vitejs/plugin-vue": "6.0.8",
+    "concurrently": "10.0.3",
+    "tsx": "4.23.1",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vue-tsc": "3.3.8"
+  }
+}
