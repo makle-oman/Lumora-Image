@@ -30,7 +30,11 @@ export async function generateImage(request: GenerateImageRequest): Promise<stri
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt: request.prompt,
+      n: 1,
+    }),
   })
 
   const body: unknown = await response.json()

@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { ChevronDown, Grid2X2, Layers3, LoaderCircle, Plus, Sparkles } from 'lucide-vue-next'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
-  imageSizes,
+  Check,
+  CircleAlert,
+  ChevronDown,
+  Grid2X2,
+  Layers3,
+  LoaderCircle,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  X,
+  Zap,
+} from 'lucide-vue-next'
+import {
   type ApiStatus,
   type GenerateImageRequest,
   type ImageSize,
@@ -24,6 +35,77 @@ const emit = defineEmits<{
 const prompt = defineModel<string>({ default: '' })
 const size = ref<ImageSize>('2048x2048')
 const isPublic = ref(false)
+const selectedCount = ref(1)
+const promptHeight = ref(88)
+const minPromptHeight = 88
+const maxPromptHeight = 360
+let resizeStartY = 0
+let resizeStartHeight = 0
+let isResizing = false
+
+// Parameter Popover State
+const isParamPopoverOpen = ref(false)
+const messageText = ref('')
+const isStatusDismissed = ref(false)
+let messageTimeout: ReturnType<typeof setTimeout> | null = null
+
+interface AspectRatioOption {
+  id: string
+  label: string
+  subLabel: string
+  width: number
+  height: number
+  sizeValue: ImageSize
+}
+
+const aspectRatios: AspectRatioOption[] = [
+  { id: 'auto', label: '智能', subLabel: '自动', width: 14, height: 14, sizeValue: '2048x2048' },
+  { id: '1-1', label: '1:1', subLabel: '正方形', width: 15, height: 15, sizeValue: '2048x2048' },
+  { id: '9-16', label: '9:16', subLabel: '手机屏', width: 11, height: 18, sizeValue: '1152x2048' },
+  { id: '16-9', label: '16:9', subLabel: '影院屏', width: 19, height: 11, sizeValue: '2048x1152' },
+  { id: '2-3', label: '2:3', subLabel: '海报', width: 12, height: 17, sizeValue: '1152x2048' },
+  { id: '3-2', label: '3:2', subLabel: '摄影', width: 17, height: 12, sizeValue: '2048x1152' },
+]
+
+const selectedRatioId = ref('auto')
+const countOptions = [
+  { count: 1, cost: '1 积分' },
+  { count: 2, cost: '2 积分' },
+  { count: 3, cost: '3 积分' },
+  { count: 4, cost: '4 积分' },
+]
+
+const currentRatioLabel = computed(() => {
+  const currentOption = aspectRatios.find(r => r.id === selectedRatioId.value)
+  return currentOption ? currentOption.label : '智能'
+})
+
+function selectRatio(option: AspectRatioOption): void {
+  selectedRatioId.value = option.id
+  size.value = option.sizeValue
+}
+
+function resetDefaults(): void {
+  selectedRatioId.value = 'auto'
+  size.value = '2048x2048'
+  selectedCount.value = 1
+}
+
+function handleClickOutside(event: MouseEvent): void {
+  const target = event.target as HTMLElement
+  if (isParamPopoverOpen.value && !target.closest('.param-trigger-wrapper')) {
+    isParamPopoverOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  clearMessage()
+})
 
 const canGenerate = computed(() => (
   prompt.value.trim().length > 0
@@ -37,13 +119,47 @@ const statusText = computed(() => {
   return props.errorMessage
 })
 
+const visibleStatusText = computed(() => (
+  isStatusDismissed.value ? '' : statusText.value
+))
+
+function clearMessage(): void {
+  if (messageTimeout) {
+    clearTimeout(messageTimeout)
+    messageTimeout = null
+  }
+  messageText.value = ''
+}
+
+function showMessage(message: string): void {
+  clearMessage()
+  messageText.value = message
+  messageTimeout = setTimeout(() => {
+    messageText.value = ''
+    messageTimeout = null
+  }, 4500)
+}
+
+watch(statusText, (message) => {
+  if (message) {
+    isStatusDismissed.value = false
+    showMessage(message)
+  } else {
+    clearMessage()
+  }
+})
+
 function submit(): void {
   if (!canGenerate.value) return
-  emit('generate', {
+  const request: GenerateImageRequest = {
     prompt: prompt.value.trim(),
     size: size.value,
     quality: 'high',
-  })
+  }
+  isStatusDismissed.value = true
+  clearMessage()
+  emit('generate', request)
+  prompt.value = ''
 }
 
 function handleEnter(event: KeyboardEvent): void {
@@ -51,10 +167,68 @@ function handleEnter(event: KeyboardEvent): void {
   event.preventDefault()
   submit()
 }
+
+function setPromptHeight(height: number): void {
+  promptHeight.value = Math.min(maxPromptHeight, Math.max(minPromptHeight, height))
+}
+
+function startPromptResize(event: PointerEvent): void {
+  if (event.button !== 0) return
+  isResizing = true
+  resizeStartY = event.clientY
+  resizeStartHeight = promptHeight.value
+  event.currentTarget instanceof HTMLElement && event.currentTarget.setPointerCapture(event.pointerId)
+}
+
+function resizePrompt(event: PointerEvent): void {
+  if (!isResizing) return
+  setPromptHeight(resizeStartHeight + resizeStartY - event.clientY)
+}
+
+function stopPromptResize(event: PointerEvent): void {
+  isResizing = false
+  if (event.currentTarget instanceof HTMLElement && event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+}
 </script>
 
 <template>
   <form class="composer" :class="{ 'has-batch': showBatchEdit }" @submit.prevent="submit">
+    <Teleport to="body">
+      <Transition name="message-fade">
+        <div v-if="messageText" class="system-message" role="alert">
+          <CircleAlert class="system-message-icon" :size="18" :stroke-width="2" aria-hidden="true" />
+          <span class="system-message-text">{{ messageText }}</span>
+          <button
+            class="system-message-close"
+            type="button"
+            title="关闭提示"
+            aria-label="关闭提示"
+            @click="clearMessage"
+          >
+            <X :size="15" :stroke-width="2" />
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- iOS Style Drag Handle Bar at Top Border -->
+    <button
+      class="resize-handle"
+      type="button"
+      title="拖动调整输入框高度"
+      aria-label="调整输入框高度"
+      @pointerdown.prevent="startPromptResize"
+      @pointermove="resizePrompt"
+      @pointerup="stopPromptResize"
+      @pointercancel="stopPromptResize"
+      @keydown.up.prevent="setPromptHeight(promptHeight + 24)"
+      @keydown.down.prevent="setPromptHeight(promptHeight - 24)"
+    >
+      <div class="ios-drag-pill" />
+    </button>
+
     <div class="prompt-row">
       <button class="add-button" type="button" title="添加参考图" aria-label="添加参考图">
         <Plus :size="20" :stroke-width="1.7" />
@@ -63,6 +237,7 @@ function handleEnter(event: KeyboardEvent): void {
       <textarea
         id="image-prompt"
         v-model="prompt"
+        :style="{ height: `${promptHeight}px` }"
         rows="3"
         maxlength="5000"
         placeholder="请输入你的创意（按 Enter 发送，Shift+Enter 换行）"
@@ -83,16 +258,117 @@ function handleEnter(event: KeyboardEvent): void {
       </div>
 
       <div class="generation-options">
-        <label class="size-control">
-          <Grid2X2 :size="13" :stroke-width="1.8" />
-          <span class="sr-only">图片尺寸</span>
-          <select v-model="size" aria-label="图片尺寸">
-            <option v-for="item in imageSizes" :key="item.value" :value="item.value">
-              {{ item.label.replace(' 标准', '').replace(' 2K', '') }} | 1张
-            </option>
-          </select>
-          <ChevronDown :size="12" :stroke-width="1.8" aria-hidden="true" />
-        </label>
+        <!-- Next-Gen Glassmorphic Parameter Controller -->
+        <div class="param-trigger-wrapper">
+          <button
+            class="size-control-btn"
+            type="button"
+            :class="{ 'is-open': isParamPopoverOpen }"
+            @click.stop="isParamPopoverOpen = !isParamPopoverOpen"
+          >
+            <div class="btn-left">
+              <Grid2X2 :size="13" :stroke-width="2" class="param-icon" />
+              <span>{{ currentRatioLabel }}</span>
+              <span class="divider">•</span>
+              <span>{{ selectedCount }}张</span>
+            </div>
+            <ChevronDown
+              :size="12"
+              :stroke-width="2"
+              class="chevron-icon"
+              :class="{ 'is-flipped': isParamPopoverOpen }"
+            />
+          </button>
+
+          <!-- Ultra-Premium Glassmorphic Parameter Popover -->
+          <Transition name="popover-fade">
+            <div v-if="isParamPopoverOpen" class="param-popover" @click.stop>
+              <!-- Popover Header -->
+              <div class="popover-header">
+                <div class="header-title">
+                  <Grid2X2 :size="14" class="purple-icon" />
+                  <span>图像渲染参数设置</span>
+                </div>
+                <button
+                  class="reset-link-btn"
+                  type="button"
+                  title="重置参数"
+                  @click="resetDefaults"
+                >
+                  <RotateCcw :size="12" />
+                  重置
+                </button>
+              </div>
+
+              <!-- Section 1: Aspect Ratio Selection -->
+              <div class="popover-section">
+                <div class="section-label-row">
+                  <span class="section-label">画幅比例</span>
+                  <span class="section-hint">点击选择最佳构图</span>
+                </div>
+
+                <div class="ratio-grid">
+                  <button
+                    v-for="item in aspectRatios"
+                    :key="item.id"
+                    type="button"
+                    class="ratio-card"
+                    :class="{ active: selectedRatioId === item.id }"
+                    @click="selectRatio(item)"
+                  >
+                    <div class="ratio-preview-box">
+                      <div
+                        class="ratio-shape-inner"
+                        :style="{ width: item.width + 'px', height: item.height + 'px' }"
+                      />
+                    </div>
+                    <div class="ratio-text-group">
+                      <span class="ratio-main-label">{{ item.label }}</span>
+                      <span class="ratio-sub-label">{{ item.subLabel }}</span>
+                    </div>
+                    <div class="check-badge" :class="{ show: selectedRatioId === item.id }">
+                      <Check :size="10" :stroke-width="3" />
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Section 2: Generation Batch Count -->
+              <div class="popover-section" style="margin-top: 20px;">
+                <div class="section-label-row">
+                  <span class="section-label">并发生成张数</span>
+                  <span class="section-hint"><Zap :size="11" class="amber-icon" /> 按量消耗积分</span>
+                </div>
+
+                <div class="count-segments">
+                  <button
+                    v-for="item in countOptions"
+                    :key="item.count"
+                    type="button"
+                    class="count-segment-btn"
+                    :class="{ active: selectedCount === item.count }"
+                    @click="selectedCount = item.count"
+                  >
+                    <span class="count-num">{{ item.count }} 张</span>
+                    <span class="cost-tag">{{ item.cost }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Popover Footer Action -->
+              <div class="popover-footer">
+                <span class="footer-tip">已选 <strong>{{ currentRatioLabel }}</strong> 比例 · <strong>{{ selectedCount }}</strong> 张输出</span>
+                <button
+                  class="done-btn"
+                  type="button"
+                  @click="isParamPopoverOpen = false"
+                >
+                  应用设置
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
 
         <button v-if="showBatchEdit" class="batch-button" type="button">
           <Layers3 :size="14" :stroke-width="1.8" />
@@ -106,25 +382,31 @@ function handleEnter(event: KeyboardEvent): void {
         <span class="toggle" aria-hidden="true" />
       </label>
 
+      <!-- Generate Button with Ultra-smooth 60fps Glowing Pulse during Loading -->
       <button
         class="generate-button"
+        :class="{ 'is-loading': loading }"
         type="submit"
         :disabled="!canGenerate"
-        :title="statusText || '生成图片'"
+        :title="visibleStatusText || '生成图片'"
       >
-        <LoaderCircle v-if="loading" class="spinner" :size="16" aria-hidden="true" />
-        {{ loading ? '生成中' : '生成' }}
+        <span class="btn-inner">
+          <LoaderCircle v-if="loading" class="spinner" :size="15" aria-hidden="true" />
+          <span>{{ loading ? '生成中' : '生成' }}</span>
+        </span>
       </button>
     </div>
 
-    <p class="sr-only" aria-live="polite">{{ statusText }}</p>
+    <p v-if="visibleStatusText" class="composer-status" role="alert">{{ visibleStatusText }}</p>
+    <p class="sr-only" aria-live="polite">{{ visibleStatusText }}</p>
   </form>
 </template>
 
 <style scoped>
 .composer {
+  position: relative;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
   background: #fcfcfc;
   border: 1px solid #e3e3e3;
   border-radius: 24px;
@@ -136,6 +418,40 @@ function handleEnter(event: KeyboardEvent): void {
   min-height: 114px;
   gap: 12px;
   padding: 18px 20px 8px;
+}
+
+/* iOS Style Drag Handle Bar at Top Border (GPU accelerated 60fps) */
+.resize-handle {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 14px;
+  padding: 0;
+  cursor: ns-resize;
+  touch-action: none;
+  background: transparent;
+  border: 0;
+  transform: translateX(-50%);
+}
+
+.ios-drag-pill {
+  width: 32px;
+  height: 4px;
+  background: #cbd5e1;
+  border-radius: 2px;
+  will-change: width, background-color;
+  transition: width 150ms ease, background-color 150ms ease;
+}
+
+.resize-handle:hover .ios-drag-pill,
+.resize-handle:focus-visible .ios-drag-pill {
+  width: 40px;
+  background: #7c3aed;
 }
 
 .add-button {
@@ -171,6 +487,7 @@ textarea::placeholder {
 }
 
 .composer-controls {
+  position: relative;
   display: flex;
   min-height: 60px;
   align-items: center;
@@ -187,21 +504,22 @@ textarea::placeholder {
 }
 
 .model-button,
-.size-control,
+.size-control-btn,
 .batch-button {
   display: inline-flex;
-  min-height: 28px;
+  min-height: 30px;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 0 11px;
-  color: #888888;
+  padding: 0 12px;
+  color: #666666;
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   background: #f5f5f5;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 16px;
+  transition: all 180ms ease;
 }
 
 .model-button {
@@ -218,22 +536,327 @@ textarea::placeholder {
   opacity: 0.78;
 }
 
-.size-control {
+/* Stable Width Parameter Pill Trigger Button */
+.param-trigger-wrapper {
   position: relative;
-  padding-right: 9px;
+  width: 132px;
+  flex-shrink: 0;
 }
 
-.size-control select {
-  max-width: 104px;
-  height: 28px;
-  padding: 0;
-  color: #666666;
-  font-size: 12px;
+.size-control-btn {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: space-between;
+  padding: 0 12px;
+  color: #334155;
+  font-weight: 550;
   cursor: pointer;
-  appearance: none;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.param-icon {
+  color: #7c3aed;
+}
+
+.divider {
+  color: #cbd5e1;
+  font-size: 10px;
+}
+
+.size-control-btn:hover,
+.size-control-btn.is-open {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #7c3aed;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.12);
+}
+
+.chevron-icon {
+  margin-left: 4px;
+  transition: transform 180ms ease;
+}
+
+.chevron-icon.is-flipped {
+  transform: rotate(180deg);
+}
+
+/* Next-Gen Ultra-Premium Parameter Popover */
+.param-popover {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: 356px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14), 0 6px 20px rgba(124, 58, 237, 0.06);
+  backdrop-filter: blur(28px);
+}
+
+.popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.purple-icon {
+  color: #7c3aed;
+}
+
+.reset-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
   background: transparent;
   border: 0;
-  outline: 0;
+  transition: color 150ms ease;
+}
+
+.reset-link-btn:hover {
+  color: #7c3aed;
+}
+
+.popover-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-label {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.section-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.amber-icon {
+  color: #f59e0b;
+}
+
+/* Aspect Ratio 6-Grid Tactile Cards */
+.ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ratio-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  color: #475569;
+  cursor: pointer;
+  background: #f8fafc;
+  border: 1.5px solid #f1f5f9;
+  border-radius: 14px;
+  box-sizing: border-box;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.ratio-card:hover {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.ratio-card.active {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 0.5px #7c3aed, 0 4px 16px rgba(124, 58, 237, 0.15);
+}
+
+.ratio-preview-box {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+}
+
+.ratio-shape-inner {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.ratio-card.active .ratio-shape-inner {
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.ratio-text-group {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  min-width: 0;
+}
+
+.ratio-main-label {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.ratio-sub-label {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 500;
+  transition: color 160ms ease;
+}
+
+.ratio-card.active .ratio-sub-label {
+  color: #7c3aed;
+}
+
+.check-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  color: #ffffff;
+  background: #7c3aed;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.check-badge.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Count Segmented Controller */
+.count-segments {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.count-segment-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 44px;
+  color: #475569;
+  cursor: pointer;
+  background: #f8fafc;
+  border: 1.5px solid #f1f5f9;
+  border-radius: 12px;
+  box-sizing: border-box;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.count-segment-btn:hover {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.count-segment-btn.active {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 0.5px #7c3aed, 0 4px 16px rgba(124, 58, 237, 0.15);
+}
+
+.count-num {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.count-segment-btn.active .count-num {
+  color: #7c3aed;
+}
+
+.cost-tag {
+  color: #94a3b8;
+  font-size: 9px;
+}
+
+/* Footer Action */
+.popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 14px;
+  margin-top: 18px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.footer-tip {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.footer-tip strong {
+  color: #0f172a;
+}
+
+.done-btn {
+  padding: 6px 14px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #0f172a;
+  border: 0;
+  border-radius: 10px;
+  transition: background 150ms ease;
+}
+
+.done-btn:hover {
+  background: #7c3aed;
 }
 
 .batch-button {
@@ -287,32 +910,141 @@ textarea::placeholder {
   transform: translateX(16px);
 }
 
-.privacy-control input:focus-visible + .toggle {
-  outline: 2px solid #1a1a1a;
-  outline-offset: 2px;
-}
-
 .generate-button {
+  position: relative;
   display: inline-flex;
-  width: 72px;
+  min-width: 86px;
+  width: auto;
   min-height: 38px;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0 14px;
+  padding: 0 16px;
   color: #ffffff;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
-  background: #1a1a1a;
-  border: 0;
+  background: #0f172a;
+  border: 1px solid transparent;
   border-radius: 20px;
-  transition: opacity 180ms ease, background-color 180ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 180ms ease;
 }
 
-.generate-button:disabled {
+.btn-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.generate-button:hover:not(:disabled) {
+  background: #1e293b;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+}
+
+.generate-button:disabled:not(.is-loading) {
   cursor: not-allowed;
-  background: #bdbdbd;
+  background: #cbd5e1;
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+/* Lightweight 60fps Purple Glow Pulse Animation during Loading (Zero GPU lag) */
+.generate-button.is-loading {
+  background: #0f172a;
+  border-color: rgba(192, 132, 252, 0.8);
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.35);
+  animation: pulseBorderGlow 1.6s ease-in-out infinite;
+  will-change: border-color, box-shadow;
+  cursor: wait;
+}
+
+@keyframes pulseBorderGlow {
+  0%, 100% {
+    border-color: rgba(192, 132, 252, 0.5);
+    box-shadow: 0 0 8px rgba(124, 58, 237, 0.2);
+  }
+  50% {
+    border-color: rgba(168, 85, 247, 0.95);
+    box-shadow: 0 0 18px rgba(168, 85, 247, 0.5);
+  }
+}
+
+.composer-status {
+  margin: -2px 20px 12px;
+  padding: 8px 12px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 10px;
+}
+
+.system-message {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  z-index: 200;
+  display: flex;
+  width: min(460px, calc(100vw - 32px));
+  min-height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  color: #7f1d1d;
+  background: rgb(255 250 250 / 96%);
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgb(124 58 237 / 12%), 0 4px 12px rgb(15 23 42 / 8%);
+  backdrop-filter: blur(16px);
+  transform: translateX(-50%);
+}
+
+.system-message-icon {
+  flex: 0 0 auto;
+  color: #e05a75;
+}
+
+.system-message-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.system-message-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  color: #9f1239;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.system-message-close:hover {
+  background: rgb(225 29 72 / 8%);
+}
+
+.message-fade-enter-active,
+.message-fade-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.message-fade-enter-from,
+.message-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px);
 }
 
 .spinner {
@@ -323,6 +1055,18 @@ textarea::placeholder {
   to { transform: rotate(360deg); }
 }
 
+/* Popover Transition */
+.popover-fade-enter-active,
+.popover-fade-leave-active {
+  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.popover-fade-enter-from,
+.popover-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px) scale(0.96);
+}
+
 @media (max-width: 720px) {
   .composer {
     border-radius: 18px;
@@ -331,6 +1075,10 @@ textarea::placeholder {
   .prompt-row {
     min-height: 111px;
     padding: 16px 14px 7px;
+  }
+
+  .system-message {
+    top: 14px;
   }
 
   textarea {
@@ -354,41 +1102,13 @@ textarea::placeholder {
     min-width: 0;
   }
 
-  .model-button,
-  .size-control,
-  .batch-button {
-    min-height: 29px;
-    padding-inline: 10px;
+  .param-popover {
+    width: 310px;
+    left: 50%;
   }
 
-  .privacy-control {
-    margin: 0;
-  }
-
-  .generate-button {
-    min-height: 38px;
-  }
-
-  .composer.has-batch .composer-controls {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .composer.has-batch .model-options {
-    grid-column: 1 / 3;
-  }
-
-  .composer.has-batch .generation-options {
-    grid-column: 1 / 2;
-  }
-
-  .composer.has-batch .privacy-control {
-    grid-column: 2 / 3;
-    justify-self: end;
-  }
-
-  .composer.has-batch .generate-button {
-    grid-column: 1 / 2;
-    justify-self: start;
+  .ratio-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

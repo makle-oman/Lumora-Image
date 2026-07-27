@@ -8,8 +8,6 @@ import { z } from 'zod'
 
 const GenerateRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(5000),
-  size: z.enum(['1024x1024', '2048x2048', '2048x1152', '1152x2048']),
-  quality: z.enum(['low', 'medium', 'high']),
 })
 
 const UpstreamResponseSchema = z.object({
@@ -18,6 +16,11 @@ const UpstreamResponseSchema = z.object({
     url: z.string().url().optional(),
   })).optional(),
   error: z.object({ message: z.string().optional() }).optional(),
+}).passthrough()
+
+const UpstreamCompletedEventSchema = z.object({
+  type: z.literal('image_generation.completed'),
+  b64_json: z.string().min(1),
 }).passthrough()
 
 const port = Number.parseInt(process.env.PORT || '8787', 10)
@@ -58,6 +61,45 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
+async function readStreamedImage(upstream: Response): Promise<string | null> {
+  if (!upstream.body) return null
+
+  const reader = upstream.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer = `${buffer}${decoder.decode(value, { stream: !done })}`.replace(/\r\n/g, '\n')
+    if (done && buffer) buffer += '\n\n'
+
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      const data = block
+        .split('\n')
+        .filter(line => line.startsWith('data:'))
+        .map(line => line.slice(5).trimStart())
+        .join('\n')
+
+      if (data && data !== '[DONE]') {
+        try {
+          const event = UpstreamCompletedEventSchema.safeParse(JSON.parse(data))
+          if (event.success) return event.data.b64_json
+        }
+        catch {
+          return null
+        }
+      }
+
+      boundary = buffer.indexOf('\n\n')
+    }
+
+    if (done) return null
+  }
+}
+
 async function generateImage(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const configuration = getApiConfiguration()
   if (!configuration) {
@@ -75,17 +117,28 @@ async function generateImage(request: IncomingMessage, response: ServerResponse)
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${configuration.apiKey}`,
+      'Accept': 'text/event-stream',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: 'gpt-image-2',
       prompt: parsedRequest.data.prompt,
-      size: parsedRequest.data.size,
-      quality: parsedRequest.data.quality,
-      output_format: 'png',
       n: 1,
+      stream: true,
+      partial_images: 1,
     }),
   })
+
+  if (upstream.ok && upstream.headers.get('content-type')?.includes('text/event-stream')) {
+    const imageBase64 = await readStreamedImage(upstream)
+    if (!imageBase64) {
+      sendJson(response, 502, { error: '上游流式响应中没有最终图片数据' })
+      return
+    }
+
+    sendJson(response, 200, { imageUrl: `data:image/png;base64,${imageBase64}`, model: 'gpt-image-2' })
+    return
+  }
 
   const upstreamText = await upstream.text()
   let upstreamBody: unknown

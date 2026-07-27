@@ -5,12 +5,10 @@ import {
   ArrowRight,
   Check,
   Copy,
-  Download,
   Image as ImageIcon,
-  Sparkles,
   User,
-  X,
 } from 'lucide-vue-next'
+import ImageDetailModal from '../ImageDetailModal/index.vue'
 import type { GeneratedImage } from '../../types/generation'
 
 export interface PromptItem extends GeneratedImage {
@@ -289,78 +287,13 @@ function openDetail(item: PromptItem): void {
       </article>
     </div>
 
-    <!-- Detail Lightbox Modal -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="selectedDetailItem" class="detail-backdrop" @click.self="selectedDetailItem = null">
-          <div class="detail-modal">
-            <button class="close-modal-btn" type="button" @click="selectedDetailItem = null">
-              <X :size="20" />
-            </button>
-
-            <div class="modal-left">
-              <img :src="selectedDetailItem.url" :alt="selectedDetailItem.prompt" />
-            </div>
-
-            <div class="modal-right">
-              <div class="detail-header">
-                <span class="model-badge">{{ selectedDetailItem.model || 'gpt-image-2' }}</span>
-                <span v-if="selectedDetailItem.category" class="category-badge">{{ selectedDetailItem.category }}</span>
-              </div>
-
-              <h3>提示词 (Prompt)</h3>
-              <div class="prompt-box">
-                <p>{{ selectedDetailItem.prompt }}</p>
-                <button
-                  class="copy-prompt-btn"
-                  type="button"
-                  @click="copyPrompt(selectedDetailItem.prompt, 'modal')"
-                >
-                  <Check v-if="copiedId === 'modal'" :size="14" />
-                  <Copy v-else :size="14" />
-                  <span>{{ copiedId === 'modal' ? '已复制' : '复制完整提示词' }}</span>
-                </button>
-              </div>
-
-              <h3>生成参数 (Parameters)</h3>
-              <div class="params-grid">
-                <div class="param-item">
-                  <span class="p-label">分辨率</span>
-                  <span class="p-val">{{ selectedDetailItem.size || '2048x2048' }}</span>
-                </div>
-                <div class="param-item">
-                  <span class="p-label">画面比例</span>
-                  <span class="p-val">{{ selectedDetailItem.aspectRatio || '1:1' }}</span>
-                </div>
-                <div class="param-item">
-                  <span class="p-label">随机种子 (Seed)</span>
-                  <span class="p-val">{{ selectedDetailItem.seed || 849201 }}</span>
-                </div>
-                <div class="param-item">
-                  <span class="p-label">创作者</span>
-                  <span class="p-val">{{ selectedDetailItem.author || 'Lumora Creator' }}</span>
-                </div>
-              </div>
-
-              <div class="modal-bottom-actions">
-                <button class="remix-big-btn" type="button" @click="handleRemix(selectedDetailItem.prompt)">
-                  <Sparkles :size="18" />
-                  <span>一键生同款 (Remix Prompt)</span>
-                </button>
-                <a
-                  class="download-btn"
-                  :href="selectedDetailItem.url"
-                  :download="`lumora-${selectedDetailItem.id}.png`"
-                  target="_blank"
-                >
-                  <Download :size="18" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <!-- Detail Lightbox Modal matching reference mockup -->
+    <ImageDetailModal
+      :item="selectedDetailItem"
+      :open="!!selectedDetailItem"
+      @close="selectedDetailItem = null"
+      @reuse="handleRemix"
+    />
   </div>
 
   <div v-else class="empty-state">

@@ -33,6 +33,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const images = ref<ReadonlyArray<GeneratedImage>>(sampleImages)
   const requestState = ref<GenerationRequestState>({ status: 'idle' })
   const apiStatus = ref<ApiStatus>('checking')
+  const activePrompt = ref('')
 
   const isLoading = computed(() => requestState.value.status === 'loading')
   const errorMessage = computed(() => requestState.value.status === 'error' ? requestState.value.message : '')
@@ -50,6 +51,7 @@ export const useGenerationStore = defineStore('generation', () => {
   async function generate(request: GenerateImageRequest): Promise<void> {
     if (requestState.value.status === 'loading') return
 
+    activePrompt.value = request.prompt
     requestState.value = { status: 'loading' }
     try {
       const imageUrl = await generateImage(request)
@@ -84,6 +86,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   return {
     images,
+    activePrompt,
     requestState,
     apiStatus,
     isLoading,
