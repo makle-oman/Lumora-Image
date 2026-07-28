@@ -56,6 +56,10 @@ const PublicStatsSchema = z.object({
   publicImages: z.number().int().nonnegative(),
   categories: z.array(z.object({ name: z.string(), count: z.number().int().nonnegative() })),
 })
+const ImageVisibilitySchema = z.object({
+  id: z.string().min(1),
+  isPublic: z.boolean(),
+})
 
 export async function getHealth(): Promise<HealthStatus> {
   return requestJson('/api/health', HealthResponseSchema)
@@ -70,11 +74,13 @@ export type GenerationTask = z.infer<typeof GenerationTaskSchema>
 export async function generateImage(request: GenerateImageRequest): Promise<GenerationTask[]> {
   const parsed = z.object({
     prompt: z.string().trim().min(1).max(32_000),
+    size: ImageSizeSchema,
     n: z.number().int().min(1).max(4),
     isPublic: z.boolean(),
     batch: z.boolean(),
   }).parse({
     ...request,
+    size: request.size ?? '1024x1024',
     n: request.n ?? 1,
     isPublic: request.isPublic ?? false,
     batch: request.batch ?? false,
@@ -86,6 +92,7 @@ export async function generateImage(request: GenerateImageRequest): Promise<Gene
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: parsed.prompt,
+        size: parsed.size,
         n: parsed.n,
         ...(parsed.isPublic ? { isPublic: true } : {}),
       }),
@@ -94,6 +101,7 @@ export async function generateImage(request: GenerateImageRequest): Promise<Gene
 
   const form = new FormData()
   form.set('prompt', parsed.prompt)
+  form.set('size', parsed.size)
   form.set('n', String(parsed.n))
   form.set('isPublic', String(parsed.isPublic))
   form.set('batch', String(parsed.batch))
@@ -133,6 +141,14 @@ export async function getPublicStats(): Promise<PublicStats> {
 
 export async function deleteImage(id: string): Promise<void> {
   await requestJson(`/api/images/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' })
+}
+
+export async function updateImageVisibility(id: string, isPublic: boolean): Promise<{ id: string; isPublic: boolean }> {
+  return requestJson(`/api/images/${encodeURIComponent(id)}/visibility`, ImageVisibilitySchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isPublic }),
+  })
 }
 
 export async function deleteAllImages(): Promise<void> {

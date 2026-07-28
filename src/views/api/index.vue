@@ -18,7 +18,7 @@ const userStore = useUserStore()
 const generationStore = useGenerationStore()
 const copiedKeyId = ref('')
 const copiedText = ref('')
-const activeSubNav = ref<'overview' | 'keys' | 'logs' | 'docs'>('docs')
+const activeSubNav = ref<'overview' | 'keys' | 'logs' | 'docs'>('overview')
 const activeCodeLang = ref<'curl' | 'python' | 'node' | 'go'>('curl')
 
 // Key creation & visibility state

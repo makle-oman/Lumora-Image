@@ -2,6 +2,7 @@ export type ImageSize = 'auto' | `${number}x${number}`
 
 export type GenerateImageRequest = Readonly<{
   prompt: string
+  size?: ImageSize
   n?: 1 | 2 | 3 | 4
   isPublic?: boolean
   images?: ReadonlyArray<File>

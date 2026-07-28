@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
+  Check,
   CircleAlert,
   ChevronDown,
   Grid2X2,
@@ -14,6 +15,7 @@ import {
 import {
   type ApiStatus,
   type GenerateImageRequest,
+  type ImageSize,
 } from '../../types/generation'
 
 const props = withDefaults(defineProps<{
@@ -30,6 +32,8 @@ const emit = defineEmits<{
 }>()
 
 const prompt = defineModel<string>({ default: '' })
+const size = ref<ImageSize>('1024x1024')
+const isPublic = ref(false)
 const selectedCount = ref(1)
 const referenceInput = ref<HTMLInputElement | null>(null)
 const references = ref<Array<{ id: string; file: File; url: string }>>([])
@@ -47,6 +51,25 @@ const messageText = ref('')
 const showApiStatus = ref(false)
 let messageTimeout: ReturnType<typeof setTimeout> | null = null
 
+interface AspectRatioOption {
+  id: string
+  label: string
+  subLabel: string
+  width: number
+  height: number
+  sizeValue: ImageSize
+}
+
+const aspectRatios: AspectRatioOption[] = [
+  { id: 'auto', label: '智能', subLabel: '标准', width: 14, height: 14, sizeValue: '1024x1024' },
+  { id: '1-1', label: '1:1', subLabel: '正方形', width: 15, height: 15, sizeValue: '1024x1024' },
+  { id: '9-16', label: '9:16', subLabel: '手机屏', width: 11, height: 18, sizeValue: '1024x1792' },
+  { id: '16-9', label: '16:9', subLabel: '影院屏', width: 19, height: 11, sizeValue: '1792x1024' },
+  { id: '2-3', label: '2:3', subLabel: '海报', width: 12, height: 17, sizeValue: '1024x1536' },
+  { id: '3-2', label: '3:2', subLabel: '摄影', width: 17, height: 12, sizeValue: '1536x1024' },
+]
+
+const selectedRatioId = ref('auto')
 const countOptions = [
   { count: 1, cost: '1 积分' },
   { count: 2, cost: '2 积分' },
@@ -54,7 +77,18 @@ const countOptions = [
   { count: 4, cost: '4 积分' },
 ]
 
+const currentRatioLabel = computed(() => (
+  aspectRatios.find(option => option.id === selectedRatioId.value)?.label ?? '智能'
+))
+
+function selectRatio(option: AspectRatioOption): void {
+  selectedRatioId.value = option.id
+  size.value = option.sizeValue
+}
+
 function resetDefaults(): void {
+  selectedRatioId.value = 'auto'
+  size.value = '1024x1024'
   selectedCount.value = 1
 }
 
@@ -118,8 +152,9 @@ function submit(): void {
   }
   const request: GenerateImageRequest = {
     prompt: prompt.value.trim(),
+    size: size.value,
     n: selectedCount.value as 1 | 2 | 3 | 4,
-    isPublic: true,
+    isPublic: isPublic.value,
     images: references.value.map(item => item.file),
     batch: batchEdit.value,
   }
@@ -271,6 +306,8 @@ function stopPromptResize(event: PointerEvent): void {
           >
             <div class="btn-left">
               <Grid2X2 :size="13" :stroke-width="2" class="param-icon" />
+              <span>{{ currentRatioLabel }}</span>
+              <span class="divider">•</span>
               <span>{{ selectedCount }} 张</span>
             </div>
             <ChevronDown
@@ -288,7 +325,7 @@ function stopPromptResize(event: PointerEvent): void {
               <div class="popover-header">
                 <div class="header-title">
                   <Grid2X2 :size="14" class="purple-icon" />
-                  <span>生成张数</span>
+                  <span>图像渲染参数设置</span>
                 </div>
                 <button
                   class="reset-link-btn"
@@ -301,6 +338,37 @@ function stopPromptResize(event: PointerEvent): void {
               </div>
 
               <!-- Section 1: Aspect Ratio Selection -->
+              <div class="popover-section">
+                <div class="section-label-row">
+                  <span class="section-label">画幅比例</span>
+                  <span class="section-hint">点击选择最佳构图</span>
+                </div>
+
+                <div class="ratio-grid">
+                  <button
+                    v-for="item in aspectRatios"
+                    :key="item.id"
+                    type="button"
+                    class="ratio-card"
+                    :class="{ active: selectedRatioId === item.id }"
+                    @click="selectRatio(item)"
+                  >
+                    <div class="ratio-preview-box">
+                      <div
+                        class="ratio-shape-inner"
+                        :style="{ width: `${item.width}px`, height: `${item.height}px` }"
+                      />
+                    </div>
+                    <div class="ratio-text-group">
+                      <span class="ratio-main-label">{{ item.label }}</span>
+                      <span class="ratio-sub-label">{{ item.subLabel }}</span>
+                    </div>
+                    <div class="check-badge" :class="{ show: selectedRatioId === item.id }">
+                      <Check :size="10" :stroke-width="3" />
+                    </div>
+                  </button>
+                </div>
+              </div>
 
               <!-- Section 2: Generation Batch Count -->
               <div class="popover-section">
@@ -326,7 +394,7 @@ function stopPromptResize(event: PointerEvent): void {
 
               <!-- Popover Footer Action -->
               <div class="popover-footer">
-                <span class="footer-tip">已选 <strong>{{ selectedCount }}</strong> 张输出</span>
+                <span class="footer-tip">已选 <strong>{{ currentRatioLabel }}</strong> 比例 · <strong>{{ selectedCount }}</strong> 张输出</span>
                 <button
                   class="done-btn"
                   type="button"
@@ -351,6 +419,12 @@ function stopPromptResize(event: PointerEvent): void {
           批量编辑
         </button>
       </div>
+
+      <label class="privacy-control">
+        <span>公开</span>
+        <input v-model="isPublic" type="checkbox" />
+        <span class="toggle" aria-hidden="true" />
+      </label>
 
       <!-- Generate Button with Ultra-smooth 60fps Glowing Pulse during Loading -->
       <button
@@ -881,6 +955,58 @@ textarea::placeholder {
   opacity: 0.45;
 }
 
+.privacy-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  color: #555555;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.privacy-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.toggle {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  background: #dddddd;
+  border-radius: 10px;
+  transition: background-color 180ms ease;
+}
+
+.toggle::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  content: '';
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  transition: transform 180ms ease;
+}
+
+.privacy-control input:checked + .toggle {
+  background: #1a1a1a;
+}
+
+.privacy-control input:checked + .toggle::after {
+  transform: translateX(16px);
+}
+
+.privacy-control input:focus-visible + .toggle {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
 .generate-button {
   position: relative;
   display: inline-flex;
@@ -1080,11 +1206,18 @@ textarea::placeholder {
 
   .param-popover {
     width: 310px;
-    left: 50%;
+    left: 0;
+    padding: 16px;
+    transform: none;
   }
 
   .ratio-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .popover-footer {
+    padding-top: 12px;
+    margin-top: 12px;
   }
 }
 </style>

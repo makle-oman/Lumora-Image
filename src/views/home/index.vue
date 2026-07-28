@@ -16,6 +16,12 @@ const userStore = useUserStore()
 const { isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 const { items, stats, loading } = storeToRefs(galleryStore)
 const prompt = ref('')
+const isScrolled = ref(false)
+
+function handleScroll(e: Event): void {
+  const target = e.target as HTMLElement
+  isScrolled.value = target.scrollTop > 240
+}
 
 async function generate(request: GenerateImageRequest): Promise<void> {
   if (!userStore.isLoggedIn) {
@@ -30,7 +36,7 @@ onMounted(() => void galleryStore.search('', '全部', false))
 </script>
 
 <template>
-  <section class="home-view">
+  <section class="home-view" @scroll="handleScroll">
     <div class="home-hero">
       <h1>用想象力 <em>创造</em> 世界</h1>
       <p class="subtitle">用 GPT-IMAGE-2 将你的创意变为精美图片，只需描述你脑海中的画面。</p>
@@ -57,6 +63,19 @@ onMounted(() => void galleryStore.search('', '全部', false))
       <p>来自所有创作者的灵感</p>
       <ImageGallery :items="items" :loading="loading" mode="showcase" />
     </section>
+
+    <!-- Fixed Floating Bottom Composer Dock (Visible when scrolled) -->
+    <Transition name="dock-fade">
+      <div v-if="isScrolled" class="composer-dock">
+        <PromptComposer
+          v-model="prompt"
+          :loading="isLoading"
+          :api-status="apiStatus"
+          :error-message="errorMessage"
+          @generate="generate"
+        />
+      </div>
+    </Transition>
   </section>
 </template>
 
@@ -123,7 +142,7 @@ h1 em {
 
 .recent-work {
   width: min(1120px, calc(100% - 64px));
-  margin: 82px auto 80px;
+  margin: 82px auto 280px;
   text-align: center;
 }
 
@@ -137,6 +156,38 @@ h1 em {
   margin: 9px 0 28px;
   color: #999999;
   font-size: 14px;
+}
+
+/* Fixed Floating Bottom Composer Dock */
+.composer-dock {
+  position: fixed;
+  bottom: 20px;
+  left: calc(50% + 44px);
+  z-index: 30;
+  width: min(920px, calc(100% - 130px));
+  transform: translateX(-50%);
+}
+
+.composer-dock::before {
+  position: absolute;
+  inset: -20px -100vw -20px;
+  z-index: -1;
+  content: '';
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.96) 60%, transparent);
+  backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+/* Dock transition */
+.dock-fade-enter-active,
+.dock-fade-leave-active {
+  transition: opacity 450ms cubic-bezier(0.16, 1, 0.3, 1), transform 450ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dock-fade-enter-from,
+.dock-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 30px);
 }
 
 @media (max-width: 720px) {
@@ -176,10 +227,21 @@ h1 em {
   .recent-work {
     width: calc(100% - 32px);
     margin-top: 300px;
+    margin-bottom: 180px;
   }
 
   .recent-work h2 {
     font-size: 24px;
+  }
+
+  .composer-dock {
+    left: 50%;
+    bottom: 12px;
+    width: calc(100% - 32px);
+  }
+
+  .composer-dock::before {
+    inset: -20px -100vw -12px;
   }
 }
 </style>

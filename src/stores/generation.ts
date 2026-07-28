@@ -8,6 +8,7 @@ import {
   getGenerationTasks,
   getHealth,
   getImages,
+  updateImageVisibility,
   type GenerationTask,
 } from '../services/imageApi'
 import { ApiError } from '../services/http'
@@ -197,6 +198,23 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   }
 
+  async function setImageVisibility(id: string, isPublic: boolean): Promise<boolean> {
+    try {
+      const updated = await updateImageVisibility(id, isPublic)
+      images.value = images.value.map(image => (
+        image.id === updated.id ? { ...image, isPublic: updated.isPublic } : image
+      ))
+      return true
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '图片公开状态更新失败',
+      }
+      return false
+    }
+  }
+
   async function clearGallery(): Promise<void> {
     try {
       await deleteAllImages()
@@ -231,6 +249,7 @@ export const useGenerationStore = defineStore('generation', () => {
     loadImages,
     resumeTasks,
     generate,
+    setImageVisibility,
     removeImage,
     clearGallery,
     reset,

@@ -6,6 +6,7 @@ import {
   getHealth,
   getImages,
   getPublicGallery,
+  updateImageVisibility,
 } from './imageApi'
 
 const image = {
@@ -61,7 +62,7 @@ describe('image service', () => {
     })
     expect(result).toHaveLength(2)
     const body = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<string, unknown>
-    expect(body).toEqual({ prompt: 'test prompt', n: 2 })
+    expect(body).toEqual({ prompt: 'test prompt', size: '1024x1024', n: 2 })
     await expect(getActiveGenerationTasks()).resolves.toHaveLength(1)
     await expect(getGenerationTasks(['task-1'])).resolves.toMatchObject([{ status: 'running' }])
   })
@@ -80,6 +81,7 @@ describe('image service', () => {
     })
     const form = fetchMock.mock.calls[0]?.[1]?.body as FormData
     expect(form.getAll('image')).toHaveLength(1)
+    expect(form.get('size')).toBe('1024x1024')
     expect(form.get('batch')).toBe('true')
 
     await getPublicGallery({ query: 'poster', category: '海报插画' })
@@ -93,5 +95,16 @@ describe('image service', () => {
     })))
 
     await expect(getImages()).resolves.toMatchObject([{ size: '1536x1024' }])
+  })
+
+  it('updates image visibility', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({ id: image.id, isPublic: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(updateImageVisibility(image.id, true)).resolves.toEqual({ id: image.id, isPublic: true })
+    expect(fetchMock).toHaveBeenCalledWith('/api/images/image-1/visibility', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ isPublic: true }),
+    }))
   })
 })

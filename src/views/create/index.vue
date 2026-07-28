@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   Edit3,
+  Globe2,
   LoaderCircle,
   Pencil,
   RotateCcw,
@@ -23,6 +24,7 @@ const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(
 const prompt = ref('')
 const selectedPureImage = ref<GeneratedImage | null>(null)
 const copiedId = ref<string | null>(null)
+const visibilityUpdatingId = ref<string | null>(null)
 
 // Newest generated images first
 const sortedImages = computed(() => {
@@ -70,6 +72,10 @@ watch(() => activeTasks.value.length, (count) => {
     : null
 }, { immediate: true })
 
+watch(isLoading, (loading) => {
+  if (loading) document.getElementById('main-content')?.scrollTo({ top: 0 })
+})
+
 function elapsedSeconds(createdAt: string): string {
   return (Math.max(0, currentTime.value - Date.parse(createdAt)) / 1000).toFixed(1)
 }
@@ -100,6 +106,14 @@ async function handleRegenerate(img: GeneratedImage): Promise<void> {
   await generationStore.generate({
     prompt: img.prompt,
   })
+}
+
+async function handleVisibilityChange(img: GeneratedImage, event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  visibilityUpdatingId.value = img.id
+  const updated = await generationStore.setImageVisibility(img.id, input.checked)
+  if (!updated) input.checked = img.isPublic
+  visibilityUpdatingId.value = null
 }
 
 async function copyPromptText(id: string, text: string): Promise<void> {
@@ -238,6 +252,23 @@ function useSamplePrompt(p: string): void {
             <RotateCcw :size="12" />
             <span>再次生成</span>
           </button>
+
+          <label
+            class="image-visibility-control"
+            :class="{ 'is-public': img.isPublic, 'is-updating': visibilityUpdatingId === img.id }"
+            :title="img.isPublic ? '取消公开' : '公开到首页和画廊'"
+          >
+            <input
+              type="checkbox"
+              :checked="img.isPublic"
+              :disabled="visibilityUpdatingId === img.id"
+              @change="handleVisibilityChange(img, $event)"
+            />
+            <LoaderCircle v-if="visibilityUpdatingId === img.id" :size="12" class="mini-spin" />
+            <Globe2 v-else :size="12" />
+            <span>{{ img.isPublic ? '已公开' : '公开' }}</span>
+            <span class="image-visibility-switch" aria-hidden="true" />
+          </label>
 
           <a
             class="action-pill-btn save-btn"
@@ -636,6 +667,83 @@ function useSamplePrompt(p: string): void {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
+.image-visibility-control {
+  position: relative;
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 12px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.image-visibility-control:hover {
+  color: #0f172a;
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.image-visibility-control.is-public {
+  color: #6d28d9;
+  border-color: #c4b5fd;
+}
+
+.image-visibility-control.is-updating {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.image-visibility-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.image-visibility-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  margin-left: 2px;
+  background: #cbd5e1;
+  border-radius: 8px;
+  transition: background-color 150ms ease;
+}
+
+.image-visibility-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  content: '';
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 20%);
+  transition: transform 150ms ease;
+}
+
+.image-visibility-control input:checked ~ .image-visibility-switch {
+  background: #7c3aed;
+}
+
+.image-visibility-control input:checked ~ .image-visibility-switch::after {
+  transform: translateX(12px);
+}
+
+.image-visibility-control input:focus-visible ~ .image-visibility-switch {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
 .disabled-btn {
   opacity: 0.55;
   cursor: not-allowed !important;
@@ -791,20 +899,19 @@ function useSamplePrompt(p: string): void {
   position: fixed;
   bottom: 20px;
   left: calc(50% + 44px);
-  z-index: 50;
+  z-index: 30;
   width: min(920px, calc(100% - 130px));
   transform: translateX(-50%);
 }
 
 .composer-dock::before {
   position: absolute;
-  inset: -36px -80px -20px;
+  inset: -20px -100vw -20px;
   z-index: -1;
   content: '';
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.95) 60%, transparent);
-  backdrop-filter: blur(12px);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.96) 60%, transparent);
+  backdrop-filter: blur(16px);
   pointer-events: none;
-  border-radius: 24px;
 }
 
 @media (max-width: 720px) {
@@ -823,7 +930,7 @@ function useSamplePrompt(p: string): void {
   }
 
   .composer-dock::before {
-    inset: -40px -12px -8px;
+    inset: -20px -100vw -12px;
   }
 }
 
