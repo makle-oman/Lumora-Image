@@ -1,6 +1,17 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { generateImage, getApiStatus } from '../services/imageApi'
+import {
+  deleteAllImages,
+  deleteImage,
+  generateImage,
+  getActiveGenerationTasks,
+  getGenerationTasks,
+  getHealth,
+  getImages,
+  type GenerationTask,
+} from '../services/imageApi'
+import { ApiError } from '../services/http'
+import { useUserStore } from './user'
 import type {
   ApiStatus,
   GeneratedImage,
@@ -8,92 +19,220 @@ import type {
   GenerationRequestState,
 } from '../types/generation'
 
-const sampleImages: ReadonlyArray<GeneratedImage> = [
-  {
-    id: 'sample-cat',
-    url: '/showcase/orange-cat-coffee.png',
-    prompt: '一只在咖啡杯旁边打盹的橘猫，柔和自然光，写实风格',
-    size: '2048x2048',
-    model: 'gpt-image-2',
-    createdAt: new Date('2026-07-24T10:00:00+08:00').toISOString(),
-    source: 'sample',
-  },
-  {
-    id: 'sample-diorama',
-    url: '/showcase/luxeveil-diorama.png',
-    prompt: '奢华护肤品微缩施工现场，商业产品摄影，超写实 CGI',
-    size: '2048x1152',
-    model: 'gpt-image-2',
-    createdAt: new Date('2026-07-24T10:10:00+08:00').toISOString(),
-    source: 'sample',
-  },
-]
-
 export const useGenerationStore = defineStore('generation', () => {
-  const images = ref<ReadonlyArray<GeneratedImage>>(sampleImages)
+  const images = ref<ReadonlyArray<GeneratedImage>>([])
+  const activeTasks = ref<GenerationTask[]>([])
   const requestState = ref<GenerationRequestState>({ status: 'idle' })
   const apiStatus = ref<ApiStatus>('checking')
-  const activePrompt = ref('')
+  const isSubmitting = ref(false)
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+  let pollInFlight = false
 
-  const isLoading = computed(() => requestState.value.status === 'loading')
+  const activePrompt = computed(() => activeTasks.value[0]?.prompt ?? '')
+  const isLoading = computed(() => isSubmitting.value || activeTasks.value.length > 0)
   const errorMessage = computed(() => requestState.value.status === 'error' ? requestState.value.message : '')
 
   async function checkConfiguration(): Promise<void> {
     apiStatus.value = 'checking'
     try {
-      apiStatus.value = await getApiStatus() ? 'ready' : 'missing'
+      const health = await getHealth()
+      if (!health.authenticated && useUserStore().isLoggedIn) useUserStore().expireSession()
+      apiStatus.value = !health.authenticated
+        ? 'unauthenticated'
+        : health.providerConfigured ? 'ready' : 'missing'
     }
     catch {
       apiStatus.value = 'unreachable'
     }
   }
 
-  async function generate(request: GenerateImageRequest): Promise<void> {
-    if (requestState.value.status === 'loading') return
-
-    activePrompt.value = request.prompt
-    requestState.value = { status: 'loading' }
+  async function loadImages(showError = true): Promise<void> {
     try {
-      const imageUrl = await generateImage(request)
-      const image: GeneratedImage = {
-        id: crypto.randomUUID(),
-        url: imageUrl,
-        prompt: request.prompt,
-        size: request.size,
-        model: 'gpt-image-2',
-        createdAt: new Date().toISOString(),
-        source: 'generated',
-      }
-      images.value = [image, ...images.value]
-      requestState.value = { status: 'success', imageId: image.id }
-      apiStatus.value = 'ready'
+      images.value = await getImages()
     }
     catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        useUserStore().expireSession()
+        apiStatus.value = 'unauthenticated'
+      }
+      if (showError) {
+        requestState.value = {
+          status: 'error',
+          message: error instanceof Error ? error.message : '图片列表加载失败',
+        }
+      }
+    }
+  }
+
+  async function generate(request: GenerateImageRequest): Promise<void> {
+    if (isLoading.value) return
+
+    isSubmitting.value = true
+    requestState.value = { status: 'loading' }
+    try {
+      const tasks = await generateImage(request)
+      await applyTaskUpdates(tasks)
+      apiStatus.value = 'ready'
+      schedulePolling(500)
+    }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        useUserStore().expireSession()
+        useUserStore().toggleAuthModal(true)
+        apiStatus.value = 'unauthenticated'
+      }
       requestState.value = {
         status: 'error',
         message: error instanceof Error ? error.message : '图片生成失败',
       }
     }
+    finally {
+      isSubmitting.value = false
+    }
   }
 
-  function removeImage(id: string): void {
-    images.value = images.value.filter(image => image.id !== id)
+  async function resumeTasks(showError = true): Promise<void> {
+    stopPolling()
+    try {
+      activeTasks.value = (await getActiveGenerationTasks())
+        .filter(task => task.status === 'queued' || task.status === 'running')
+      if (activeTasks.value.length) {
+        requestState.value = { status: 'loading' }
+        schedulePolling(250)
+      }
+    }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        useUserStore().expireSession()
+        apiStatus.value = 'unauthenticated'
+      }
+      else if (showError) {
+        requestState.value = {
+          status: 'error',
+          message: error instanceof Error ? error.message : '生成任务恢复失败',
+        }
+      }
+    }
   }
 
-  function clearGallery(): void {
+  async function applyTaskUpdates(tasks: GenerationTask[]): Promise<void> {
+    const pending = tasks.filter(task => task.status === 'queued' || task.status === 'running')
+    const finished = tasks.filter(task => task.status === 'success' || task.status === 'error')
+    activeTasks.value = pending
+    if (!finished.length) {
+      if (pending.length) requestState.value = { status: 'loading' }
+      return
+    }
+
+    const successes = finished.filter(task => task.status === 'success')
+    const failures = finished.filter(task => task.status === 'error')
+    if (successes.length) await loadImages()
+    await Promise.all([
+      useUserStore().refreshProfile(),
+      useUserStore().refreshUsage(),
+    ])
+    if (failures.length) {
+      requestState.value = {
+        status: 'error',
+        message: failures.map(task => task.error || '图片生成失败').join('；'),
+      }
+    }
+    else if (!pending.length) {
+      requestState.value = {
+        status: 'success',
+        imageIds: successes
+          .map(task => task.imageId)
+          .filter((id): id is string => Boolean(id)),
+      }
+    }
+  }
+
+  async function pollTasks(): Promise<void> {
+    if (pollInFlight || !activeTasks.value.length) return
+    pollInFlight = true
+    try {
+      await applyTaskUpdates(await getGenerationTasks(activeTasks.value.map(task => task.id)))
+    }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        useUserStore().expireSession()
+        apiStatus.value = 'unauthenticated'
+        activeTasks.value = []
+      }
+      else {
+        requestState.value = {
+          status: 'error',
+          message: error instanceof Error ? error.message : '生成任务状态加载失败',
+        }
+      }
+    }
+    finally {
+      pollInFlight = false
+      schedulePolling()
+    }
+  }
+
+  function schedulePolling(delay = 1000): void {
+    if (pollTimer) clearTimeout(pollTimer)
+    pollTimer = null
+    if (!activeTasks.value.length) return
+    pollTimer = setTimeout(() => void pollTasks(), delay)
+  }
+
+  function stopPolling(): void {
+    if (pollTimer) clearTimeout(pollTimer)
+    pollTimer = null
+  }
+
+  async function removeImage(id: string): Promise<void> {
+    try {
+      await deleteImage(id)
+      images.value = images.value.filter(image => image.id !== id)
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '图片删除失败',
+      }
+    }
+  }
+
+  async function clearGallery(): Promise<void> {
+    try {
+      await deleteAllImages()
+      images.value = []
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '画廊清空失败',
+      }
+    }
+  }
+
+  function reset(): void {
+    stopPolling()
     images.value = []
+    activeTasks.value = []
+    isSubmitting.value = false
+    requestState.value = { status: 'idle' }
+    apiStatus.value = 'unauthenticated'
   }
 
   return {
     images,
+    activeTasks,
     activePrompt,
     requestState,
     apiStatus,
     isLoading,
     errorMessage,
     checkConfiguration,
+    loadImages,
+    resumeTasks,
     generate,
     removeImage,
     clearGallery,
+    reset,
   }
 })

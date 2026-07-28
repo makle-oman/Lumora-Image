@@ -13,6 +13,7 @@ const router = createRouter({
       alias: '/generate',
       name: 'create',
       component: () => import('../views/create/index.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/gallery',

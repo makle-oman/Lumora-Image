@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   Activity,
   Check,
   Copy,
-  Eye,
-  EyeOff,
   Key,
   Plus,
   ShieldCheck,
@@ -13,9 +11,11 @@ import {
   Zap,
 } from 'lucide-vue-next'
 import { useUserStore } from '../../stores/user'
+import { useGenerationStore } from '../../stores/generation'
 import CopyCodeBlock from './components/CopyCodeBlock/index.vue'
 
 const userStore = useUserStore()
+const generationStore = useGenerationStore()
 const copiedKeyId = ref('')
 const copiedText = ref('')
 const activeSubNav = ref<'overview' | 'keys' | 'logs' | 'docs'>('docs')
@@ -25,23 +25,12 @@ const activeCodeLang = ref<'curl' | 'python' | 'node' | 'go'>('curl')
 const isCreatingKey = ref(false)
 const newKeyName = ref('')
 const newKeyScope = ref<'full' | 'read' | 'generate'>('full')
-const revealedKeyIds = ref<Set<string>>(new Set())
+const isCreatingProvider = ref(false)
+const providerName = ref('')
+const providerBaseUrl = ref('https://api.openai.com')
+const providerApiKey = ref('')
 
 // Interactive Try-It-Out State
-
-function toggleKeyVisibility(id: string): void {
-  if (revealedKeyIds.value.has(id)) {
-    revealedKeyIds.value.delete(id)
-  } else {
-    revealedKeyIds.value.add(id)
-  }
-}
-
-function getMaskedKey(keyStr: string, id: string): string {
-  if (revealedKeyIds.value.has(id)) return keyStr
-  if (keyStr.length <= 12) return 'sk-img-••••••••••••••••'
-  return `${keyStr.slice(0, 7)}••••••••••••${keyStr.slice(-4)}`
-}
 
 async function copyText(text: string, id?: string): Promise<void> {
   await navigator.clipboard.writeText(text)
@@ -58,21 +47,55 @@ async function copyText(text: string, id?: string): Promise<void> {
   }
 }
 
-function handleCreateKey(): void {
+async function handleCreateKey(): Promise<void> {
   if (!newKeyName.value.trim()) return
-  userStore.createApiKey(newKeyName.value.trim())
-  newKeyName.value = ''
-  isCreatingKey.value = false
+  try {
+    await userStore.createApiKey(newKeyName.value.trim(), newKeyScope.value)
+    newKeyName.value = ''
+    isCreatingKey.value = false
+  }
+  catch {
+    // The store exposes the server error next to the form.
+  }
 }
 
-const currentApiKey = computed(() => {
-  const activeKeys = userStore.apiKeys.filter(k => k.status === 'active')
-  return activeKeys.length ? activeKeys[0].key : 'sk-img-xxxxxxxxx'
-})
+async function handleCreateProvider(): Promise<void> {
+  if (!providerName.value.trim() || !providerBaseUrl.value.trim() || !providerApiKey.value.trim()) return
+  try {
+    await userStore.createProvider({
+      name: providerName.value.trim(),
+      baseUrl: providerBaseUrl.value.trim(),
+      apiKey: providerApiKey.value.trim(),
+    })
+    providerName.value = ''
+    providerApiKey.value = ''
+    isCreatingProvider.value = false
+    await generationStore.checkConfiguration()
+  }
+  catch {
+    // The store exposes the server error next to the form.
+  }
+}
+
+async function handleActivateProvider(id: string): Promise<void> {
+  await userStore.activateProvider(id)
+  await generationStore.checkConfiguration()
+}
+
+async function handleDeleteProvider(id: string): Promise<void> {
+  await userStore.deleteProvider(id)
+  await generationStore.checkConfiguration()
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
+const currentApiKey = 'lum-live-xxxxxxxxxxxxxxxx'
 
 const codeSnippets = computed(() => ({
-  curl: `curl https://api.lumora.ai/v1/images/generations \\
-  -H "Authorization: Bearer ${currentApiKey.value}" \\
+  curl: `curl ${docsBaseUrl}/images/generations \\
+  -H "Authorization: Bearer ${currentApiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-image-2",
@@ -84,8 +107,8 @@ const codeSnippets = computed(() => ({
   python: `import openai
 
 client = openai.OpenAI(
-    api_key="${currentApiKey.value}",
-    base_url="https://api.lumora.ai/v1"
+    api_key="${currentApiKey}",
+    base_url="${docsBaseUrl}"
 )
 
 response = client.images.generate(
@@ -95,13 +118,13 @@ response = client.images.generate(
     n=1
 )
 
-print(response.data[0].url)`,
+print(response.data[0].b64_json)`,
 
   node: `import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: '${currentApiKey.value}',
-  baseURL: 'https://api.lumora.ai/v1',
+  apiKey: '${currentApiKey}',
+  baseURL: '${docsBaseUrl}',
 });
 
 async function main() {
@@ -111,7 +134,7 @@ async function main() {
     size: '1024x1024',
   });
 
-  console.log(image.data[0].url);
+  console.log(image.data[0].b64_json);
 }
 
 main();`,
@@ -126,7 +149,7 @@ import (
 )
 
 func main() {
-	url := "https://api.lumora.ai/v1/images/generations"
+	url := "${docsBaseUrl}/images/generations"
 	payload := map[string]interface{}{
 		"model":  "gpt-image-2",
 		"prompt": "3D 抽象流体水晶雕塑，极简主义，绚丽光谱折射光影",
@@ -135,7 +158,7 @@ func main() {
 	body, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer ${currentApiKey.value}")
+	req.Header.Set("Authorization", "Bearer ${currentApiKey}")
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -149,12 +172,16 @@ func main() {
 }`,
 }))
 
-const docsBaseUrl = 'https://api.lumora.ai/v1'
+const docsBaseUrl = `${window.location.origin}/v1`
 const docsCode = {
   generationResponse: `{
-  "data": [{ "url": "https://..." }],
-  "creditsUsed": 1,
-  "model": "gpt-image-2"
+  "created": 1785110400,
+  "data": [{ "b64_json": "iVBORw0KGgo..." }],
+  "usage": {
+    "input_tokens": 32,
+    "output_tokens": 4096,
+    "total_tokens": 4128
+  }
 }`,
   imageFormats: `// images 数组中每个元素可以是以下任意格式：
 
@@ -174,13 +201,13 @@ const docsCode = {
   "filename": "ref.png"
 }`,
   editSingleCurl: `curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Add a rainbow in the sky" \\
   -F "size=1024x1024" \\
   -F "image=@photo.png"`,
   editMultiCurl: `# All images are used as reference context for a single output
 curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Combine these photos into a collage" \\
   -F "size=1792x1024" \\
   -F "image=@photo1.png" \\
@@ -190,7 +217,7 @@ curl -X POST ${docsBaseUrl}/images/edits \\
 # → Returns 1 result image (costs 1 credit)`,
   editJsonCurl: `# All images serve as combined reference context
 curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -H "Content-Type: application/json" \\
   -d '{
   "prompt": "Merge these two images into a poster",
@@ -218,15 +245,15 @@ formData.append('image', file3);
 
 const response = await fetch('${docsBaseUrl}/images/edits', {
   method: 'POST',
-  headers: { 'Authorization': 'Bearer sk-img-xxxxxxxx' },
+  headers: { 'Authorization': 'Bearer lum-live-xxxxxxxx' },
   body: formData,
 });
 const data = await response.json();
-console.log(data.data[0].url);`,
+console.log(data.data[0].b64_json);`,
   editPython: `import base64
 import requests
 
-API_KEY = "sk-img-xxxxxxxx"
+API_KEY = "lum-live-xxxxxxxx"
 
 # Method 1: multipart upload (all images in ONE request)
 files = [
@@ -274,13 +301,13 @@ print(resp.json()["data"][0])`,
   "model": "gpt-image-2"
 }`,
   asyncEditCurl: `curl -X POST ${docsBaseUrl}/images/edits/async \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Convert all to cyberpunk style" \\
   -F "image=@photo1.png" \\
   -F "image=@photo2.png" \\
   -F "image=@photo3.png"`,
   asyncEditJsonCurl: `curl -X POST ${docsBaseUrl}/images/edits/async \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -H "Content-Type: application/json" \\
   -d '{
   "prompt": "Style transfer: oil painting",
@@ -299,12 +326,18 @@ print(resp.json()["data"][0])`,
     {
       "id": "api_1719000000000_abc123",
       "status": "success",
-      "data": [{ "url": "https://..." }]
+      "data": [{ "b64_json": "iVBORw0KGgo..." }],
+      "error": null,
+      "createdAt": "2026-07-27T12:00:00Z",
+      "updatedAt": "2026-07-27T12:01:00Z"
     },
     {
       "id": "api_1719000000001_xyz789",
       "status": "running",
-      "elapsed_secs": 25.3
+      "data": [],
+      "error": null,
+      "createdAt": "2026-07-27T12:00:00Z",
+      "updatedAt": "2026-07-27T12:00:25Z"
     }
   ]
 }`,
@@ -321,12 +354,13 @@ print(resp.json()["data"][0])`,
   creditsResponse: `{
   "credits": 120,
   "creditsReserved": 0,
-  "plan": "partner",
-  "creditCostPerImage": 0.5
+  "plan": "Free",
+  "creditCostPerImage": 1
 }`,
   usageResponse: `{
   "totalCalls": 42,
-  "totalSpent": 38,
+  "dailyLimit": 10000,
+  "averageLatencyMs": 49734,
   "recentCalls": [
     {
       "endpoint": "/v1/images/generations",
@@ -338,6 +372,14 @@ print(resp.json()["data"][0])`,
     }
   ]
 }`,
+  errorResponse: `{
+  "error": {
+    "message": "API Key 无效或缺失",
+    "type": "authentication_error",
+    "param": null,
+    "code": null
+  }
+}`,
   asyncFlow: `# 1. 提交异步任务
 resp = POST /v1/images/generations/async
   {"prompt": "A cat on the moon", "n": 2}
@@ -347,14 +389,14 @@ resp = POST /v1/images/generations/async
 resp = GET /v1/tasks/task_1,task_2
 # → {"items": [{"id":"task_1","status":"running"}, {"id":"task_2","status":"success","data":[...]}]}
 
-# 3. 全部完成后确认扣费
+# 3. 全部完成后汇总确认
 resp = POST /v1/tasks/confirm
   {"taskIds": ["task_1", "task_2"]}
 # → {"ok": true, "successCount": 2, "creditsUsed": 2, "creditsRefunded": 0}`,
   sdkGenerationJavaScript: `const response = await fetch('${docsBaseUrl}/images/generations', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer sk-img-xxxxxxxx',
+    'Authorization': 'Bearer lum-live-xxxxxxxx',
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
@@ -364,7 +406,7 @@ resp = POST /v1/tasks/confirm
   }),
 });
 const data = await response.json();
-console.log(data.data.map(d => d.url));`,
+console.log(data.data.map(d => d.b64_json));`,
   sdkMultiReferenceJavaScript: `// Multi-reference: all images in one request → 1 result
 const formData = new FormData();
 formData.append('prompt', 'Combine into a movie poster');
@@ -375,11 +417,11 @@ formData.append('image', fileInput3.files[0]);
 
 const response = await fetch('${docsBaseUrl}/images/edits', {
   method: 'POST',
-  headers: { 'Authorization': 'Bearer sk-img-xxxxxxxx' },
+  headers: { 'Authorization': 'Bearer lum-live-xxxxxxxx' },
   body: formData,
 });
 const data = await response.json();
-console.log(data.data[0].url);`,
+console.log(data.data[0].b64_json);`,
   sdkBatchEditJavaScript: `// Batch edit: each image gets its own request → N results
 const files = [file1, file2, file3];
 const prompt = 'Convert to watercolor style';
@@ -391,16 +433,16 @@ const results = await Promise.all(
     form.append('image', file);
     const response = await fetch('${docsBaseUrl}/images/edits', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer sk-img-xxxxxxxx' },
+      headers: { 'Authorization': 'Bearer lum-live-xxxxxxxx' },
       body: form,
     });
     return response.json();
   }),
 );
-results.forEach(result => console.log(result.data[0].url));`,
+results.forEach(result => console.log(result.data[0].b64_json));`,
   sdkAsyncPython: `import requests, time
 
-API_KEY = "sk-img-xxxxxxxx"
+API_KEY = "lum-live-xxxxxxxx"
 BASE = "${docsBaseUrl}"
 
 # 1. Submit async task
@@ -426,10 +468,10 @@ requests.post(f"{BASE}/tasks/confirm",
 # 4. Get results
 for item in items:
     if item["status"] == "success":
-        print(item["data"][0]["url"])`,
+        print(item["data"][0]["b64_json"])`,
   sdkAsyncEditPython: `import requests, time
 
-API_KEY = "sk-img-xxxxxxxx"
+API_KEY = "lum-live-xxxxxxxx"
 BASE = "${docsBaseUrl}"
 
 # 1. Submit async edit with multiple reference images
@@ -460,30 +502,38 @@ requests.post(f"{BASE}/tasks/confirm",
 # 4. Collect results
 for item in items:
     if item["status"] == "success":
-        print(item["data"][0]["url"])`,
+        print(item["data"][0]["b64_json"])`,
   batchEditCurl: `# 批量编辑 = 对 N 张图分别发送 N 个独立请求，每张图各自生成 1 个结果
 # 每次请求只上传 1 张图
 
 # 请求 1
 curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Convert to anime style" \\
   -F "image=@img1.png"
 
 # 请求 2
 curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Convert to anime style" \\
   -F "image=@img2.png"
 
 # 请求 3
 curl -X POST ${docsBaseUrl}/images/edits \\
-  -H "Authorization: Bearer sk-img-xxxxxxxx" \\
+  -H "Authorization: Bearer lum-live-xxxxxxxx" \\
   -F "prompt=Convert to anime style" \\
   -F "image=@img3.png"
 
 # → 3 个独立结果，消耗 3 积分`,
 } as const
+
+onMounted(() => {
+  if (!userStore.isLoggedIn) userStore.toggleAuthModal(true)
+})
+
+onUnmounted(() => {
+  userStore.clearOneTimeApiKey()
+})
 </script>
 
 <template>
@@ -535,9 +585,9 @@ curl -X POST ${docsBaseUrl}/images/edits \\
           </div>
           <div class="stat-info">
             <span class="label">今日 API 调用量</span>
-            <div class="val">8,420 <span class="unit">/ 10,000</span></div>
+            <div class="val">{{ userStore.usage.todayCalls.toLocaleString() }} <span class="unit">/ {{ userStore.usage.dailyLimit.toLocaleString() }}</span></div>
             <div class="progress-bar">
-              <div class="fill" style="width: 84.2%;" />
+              <div class="fill" :style="{ width: `${Math.min(100, userStore.usage.todayCalls / userStore.usage.dailyLimit * 100)}%` }" />
             </div>
           </div>
         </div>
@@ -548,10 +598,10 @@ curl -X POST ${docsBaseUrl}/images/edits \\
           </div>
           <div class="stat-info">
             <span class="label">API 服务状态</span>
-            <div class="val text-green">
-              <span class="status-dot" /> 运行正常
+            <div class="val" :class="{ 'text-green': userStore.providers.some(item => item.isActive) }">
+              <span class="status-dot" /> {{ userStore.providers.some(item => item.isActive) ? '运行正常' : '未配置' }}
             </div>
-            <span class="subtext">支持 99.99% SLA 保障</span>
+            <span class="subtext">{{ userStore.providers.find(item => item.isActive)?.name || '请添加并启用调用方' }}</span>
           </div>
         </div>
 
@@ -561,11 +611,69 @@ curl -X POST ${docsBaseUrl}/images/edits \\
           </div>
           <div class="stat-info">
             <span class="label">平均响应延迟</span>
-            <div class="val">138 <span class="unit">ms</span></div>
-            <span class="subtext">基于全球边缘 GPU 节点</span>
+            <div class="val">{{ userStore.usage.averageLatencyMs.toLocaleString() }} <span class="unit">ms</span></div>
+            <span class="subtext">基于今日生图调用</span>
           </div>
         </div>
       </div>
+
+      <section class="api-section">
+        <div class="section-title-row">
+          <div>
+            <h2>生图调用方</h2>
+            <p>配置 OpenAI 兼容服务，并选择当前生图调用方</p>
+          </div>
+          <button class="create-key-btn" type="button" @click="isCreatingProvider = true">
+            <Plus :size="16" />
+            添加调用方
+          </button>
+        </div>
+
+        <div v-if="isCreatingProvider" class="create-key-box">
+          <div class="input-row">
+            <input v-model="providerName" placeholder="调用方名称" />
+            <input v-model="providerBaseUrl" placeholder="https://api.openai.com" />
+          </div>
+          <input v-model="providerApiKey" type="password" placeholder="API Key" />
+          <p v-if="userStore.operationError" class="form-error">{{ userStore.operationError }}</p>
+          <div class="actions">
+            <button class="confirm" type="button" @click="handleCreateProvider">保存</button>
+            <button class="cancel" type="button" @click="isCreatingProvider = false">取消</button>
+          </div>
+        </div>
+
+        <div class="provider-list">
+          <div v-for="provider in userStore.providers" :key="provider.id" class="provider-row">
+            <div>
+              <div class="key-name">
+                <Activity :size="16" />
+                <span>{{ provider.name }}</span>
+                <span v-if="provider.isActive" class="key-status-badge active">当前调用方</span>
+              </div>
+              <div class="provider-meta">
+                <code>{{ provider.baseUrl }}</code>
+                <span>{{ provider.model }}</span>
+                <span>{{ provider.maskedApiKey }}</span>
+                <span v-if="provider.needsRotation" class="key-status-badge revoked">请重新配置凭证</span>
+              </div>
+            </div>
+            <div class="key-actions">
+              <button
+                v-if="!provider.isActive"
+                class="create-key-btn compact"
+                type="button"
+                @click="handleActivateProvider(provider.id)"
+              >
+                启用
+              </button>
+              <button class="icon-btn danger" type="button" title="删除调用方" @click="handleDeleteProvider(provider.id)">
+                <Trash2 :size="15" />
+              </button>
+            </div>
+          </div>
+          <p v-if="userStore.providers.length === 0" class="empty-state">暂无调用方</p>
+        </div>
+      </section>
 
       <!-- Quick Start Snippet Card -->
       <section class="api-section">
@@ -621,6 +729,20 @@ curl -X POST ${docsBaseUrl}/images/edits \\
             <button class="confirm" type="button" @click="handleCreateKey">确认生成</button>
             <button class="cancel" type="button" @click="isCreatingKey = false">取消</button>
           </div>
+          <p v-if="userStore.operationError" class="form-error">{{ userStore.operationError }}</p>
+        </div>
+
+        <div v-if="userStore.oneTimeApiKey" class="create-key-box one-time-key-box">
+          <strong>新密钥仅显示一次</strong>
+          <div class="dark-code-row">
+            <code>{{ userStore.oneTimeApiKey }}</code>
+            <button class="copy-spec-btn" type="button" @click="copyText(userStore.oneTimeApiKey, 'new-key')">
+              <Check v-if="copiedKeyId === 'new-key'" :size="13" />
+              <Copy v-else :size="13" />
+              <span>{{ copiedKeyId === 'new-key' ? '已复制' : '复制' }}</span>
+            </button>
+          </div>
+          <button class="cancel" type="button" @click="userStore.clearOneTimeApiKey">关闭</button>
         </div>
 
         <div class="key-list">
@@ -634,31 +756,14 @@ curl -X POST ${docsBaseUrl}/images/edits \\
                 </span>
               </div>
               <div class="key-value-row">
-                <code class="key-value">{{ getMaskedKey(keyItem.key, keyItem.id) }}</code>
-                <button
-                  class="eye-btn"
-                  type="button"
-                  :title="revealedKeyIds.has(keyItem.id) ? '隐藏密钥' : '明文显示'"
-                  @click="toggleKeyVisibility(keyItem.id)"
-                >
-                  <EyeOff v-if="revealedKeyIds.has(keyItem.id)" :size="14" />
-                  <Eye v-else :size="14" />
-                </button>
+                <code class="key-value">{{ keyItem.maskedKey }}</code>
+                <span v-if="keyItem.needsRotation" class="key-status-badge revoked">请轮换旧密钥</span>
               </div>
             </div>
             <div class="key-meta">
               <span>创建时间: {{ keyItem.createdAt }}</span>
               <span>最后调用: {{ keyItem.lastUsed }}</span>
               <div class="key-actions">
-                <button
-                  class="icon-btn"
-                  type="button"
-                  title="复制密钥"
-                  @click="copyText(keyItem.key, keyItem.id)"
-                >
-                  <Check v-if="copiedKeyId === keyItem.id" :size="15" />
-                  <Copy v-else :size="15" />
-                </button>
                 <button
                   v-if="keyItem.status === 'active'"
                   class="icon-btn danger"
@@ -697,30 +802,15 @@ curl -X POST ${docsBaseUrl}/images/edits \\
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>2026-07-24 14:28:10</td>
-              <td><code>POST /v1/images/generations</code></td>
-              <td>gpt-image-2</td>
-              <td><span class="req-badge no">200 OK</span></td>
-              <td>420ms</td>
-              <td>1 积分</td>
+            <tr v-for="item in userStore.usage.items" :key="item.id">
+              <td>{{ formatDateTime(item.createdAt) }}</td>
+              <td><code>{{ item.endpoint }}</code></td>
+              <td>{{ item.model }}</td>
+              <td><span class="req-badge" :class="{ no: item.status === 'success' }">{{ item.status === 'success' ? '成功' : '失败' }}</span></td>
+              <td>{{ item.durationMs.toLocaleString() }}ms</td>
+              <td>{{ item.creditsUsed }} 积分</td>
             </tr>
-            <tr>
-              <td>2026-07-24 14:15:02</td>
-              <td><code>POST /v1/images/generations</code></td>
-              <td>banana2</td>
-              <td><span class="req-badge no">200 OK</span></td>
-              <td>680ms</td>
-              <td>1 积分</td>
-            </tr>
-            <tr>
-              <td>2026-07-24 13:40:22</td>
-              <td><code>GET /v1/models</code></td>
-              <td>-</td>
-              <td><span class="req-badge no">200 OK</span></td>
-              <td>45ms</td>
-              <td>0 积分</td>
-            </tr>
+            <tr v-if="userStore.usage.items.length === 0"><td colspan="6" class="empty-state">暂无调用记录</td></tr>
           </tbody>
         </table>
       </section>
@@ -754,15 +844,15 @@ curl -X POST ${docsBaseUrl}/images/edits \\
         <div class="spec-card">
           <span class="spec-label">认证方式</span>
           <div class="dark-code-row">
-            <code>Authorization: Bearer sk-img-xxxxxxxx</code>
+            <code>Authorization: Bearer lum-live-xxxxxxxx</code>
             <button
               class="copy-spec-btn"
               type="button"
-              @click="copyText('Authorization: Bearer sk-img-xxxxxxxx')"
+              @click="copyText('Authorization: Bearer lum-live-xxxxxxxx')"
             >
-              <Check v-if="copiedText === 'Authorization: Bearer sk-img-xxxxxxxx'" :size="13" />
+              <Check v-if="copiedText === 'Authorization: Bearer lum-live-xxxxxxxx'" :size="13" />
               <Copy v-else :size="13" />
-              <span>{{ copiedText === 'Authorization: Bearer sk-img-xxxxxxxx' ? 'Copied' : 'Copy' }}</span>
+              <span>{{ copiedText === 'Authorization: Bearer lum-live-xxxxxxxx' ? 'Copied' : 'Copy' }}</span>
             </button>
           </div>
         </div>
@@ -787,11 +877,6 @@ curl -X POST ${docsBaseUrl}/images/edits \\
               <td>1 积分</td>
               <td>默认费率</td>
             </tr>
-            <tr>
-              <td>Partner</td>
-              <td>0.5 积分</td>
-              <td>优享伙伴半价</td>
-            </tr>
           </tbody>
         </table>
 
@@ -810,7 +895,7 @@ curl -X POST ${docsBaseUrl}/images/edits \\
             <span class="ep-method">POST</span>
             <span class="ep-path">/v1/images/generations</span>
           </div>
-          <p class="ep-desc-text">文生图：提交文本描述，返回生成的图片 URL。</p>
+          <p class="ep-desc-text">文生图：提交文本描述，返回标准 b64_json 图片数据。</p>
 
           <h3 class="sub-heading">请求参数</h3>
           <div class="table-scroll">
@@ -819,7 +904,9 @@ curl -X POST ${docsBaseUrl}/images/edits \\
               <tbody>
                 <tr><td><code>prompt</code></td><td>string</td><td>✓</td><td>图像描述文本</td></tr>
                 <tr><td><code>n</code></td><td>integer</td><td>-</td><td>生成数量 (1-4)，默认 1</td></tr>
-                <tr><td><code>size</code></td><td>string</td><td>-</td><td>尺寸: 1024x1024, 1024x1792, 1792x1024</td></tr>
+                <tr><td><code>size</code></td><td>string</td><td>-</td><td>auto 或宽x高尺寸，边长不超过 3840</td></tr>
+                <tr><td><code>quality</code></td><td>string</td><td>-</td><td>auto、low、medium 或 high</td></tr>
+                <tr><td><code>output_format</code></td><td>string</td><td>-</td><td>png、jpeg 或 webp</td></tr>
                 <tr><td><code>model</code></td><td>string</td><td>-</td><td>模型名称，默认 gpt-image-2</td></tr>
               </tbody>
             </table>
@@ -834,7 +921,7 @@ curl -X POST ${docsBaseUrl}/images/edits \\
             <span class="ep-method">POST</span>
             <span class="ep-path">/v1/images/edits</span>
           </div>
-          <p class="ep-desc-text">图生图：上传参考图片 + 编辑指令。支持 multipart 上传文件或 JSON 传图片 URL/base64，支持多张参考图。</p>
+          <p class="ep-desc-text">图生图：上传参考图片 + 编辑指令。支持 multipart 文件或 JSON data URL/base64，不抓取远程 URL。</p>
 
           <div class="doc-callout">
             <div><Zap :size="15" aria-hidden="true" /><strong>多参考图 vs 批量编辑</strong></div>
@@ -850,16 +937,18 @@ curl -X POST ${docsBaseUrl}/images/edits \\
               <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
               <tbody>
                 <tr><td><code>prompt</code></td><td>string</td><td>✓</td><td>编辑指令</td></tr>
-                <tr><td><code>image</code></td><td>file</td><td>✓</td><td>参考图片，可多次传入多张 (1-10张)</td></tr>
+                <tr><td><code>image</code></td><td>file</td><td>✓</td><td>参考图片，可多次传入多张 (1-4 张)</td></tr>
                 <tr><td><code>model</code></td><td>string</td><td>-</td><td>模型名称，默认 gpt-image-2</td></tr>
-                <tr><td><code>n</code></td><td>integer</td><td>-</td><td>每张参考图生成数量 (1-10)，默认 1</td></tr>
-                <tr><td><code>size</code></td><td>string</td><td>-</td><td>输出尺寸: 1024x1024, 1024x1792, 1792x1024</td></tr>
+                <tr><td><code>n</code></td><td>integer</td><td>-</td><td>生成数量 (1-4)，默认 1</td></tr>
+                <tr><td><code>size</code></td><td>string</td><td>-</td><td>auto 或宽x高输出尺寸</td></tr>
+                <tr><td><code>quality</code></td><td>string</td><td>-</td><td>auto、low、medium 或 high</td></tr>
+                <tr><td><code>output_format</code></td><td>string</td><td>-</td><td>png、jpeg 或 webp</td></tr>
                 <tr><td><code>mask</code></td><td>file</td><td>-</td><td>蒙版图片（透明区域=编辑区域）</td></tr>
               </tbody>
             </table>
           </div>
 
-          <h3 class="sub-heading">方式二：application/json（URL 或 base64）</h3>
+          <h3 class="sub-heading">方式二：application/json（data URL 或 base64）</h3>
           <div class="table-scroll">
             <table class="rova-table">
               <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
@@ -867,8 +956,10 @@ curl -X POST ${docsBaseUrl}/images/edits \\
                 <tr><td><code>prompt</code></td><td>string</td><td>✓</td><td>编辑指令</td></tr>
                 <tr><td><code>images</code></td><td>array</td><td>✓</td><td>参考图片数组，见下方格式说明</td></tr>
                 <tr><td><code>model</code></td><td>string</td><td>-</td><td>模型名称，默认 gpt-image-2</td></tr>
-                <tr><td><code>n</code></td><td>integer</td><td>-</td><td>生成数量 (1-10)，默认 1</td></tr>
+                <tr><td><code>n</code></td><td>integer</td><td>-</td><td>生成数量 (1-4)，默认 1</td></tr>
                 <tr><td><code>size</code></td><td>string</td><td>-</td><td>输出尺寸</td></tr>
+                <tr><td><code>quality</code></td><td>string</td><td>-</td><td>auto、low、medium 或 high</td></tr>
+                <tr><td><code>output_format</code></td><td>string</td><td>-</td><td>png、jpeg 或 webp</td></tr>
               </tbody>
             </table>
           </div>
@@ -937,7 +1028,7 @@ curl -X POST ${docsBaseUrl}/images/edits \\
             <span class="ep-method">POST</span>
             <span class="ep-path">/v1/tasks/confirm</span>
           </div>
-          <p class="ep-desc-text">异步任务完成后确认扣费。成功的任务扣费，失败的任务自动退还积分。</p>
+          <p class="ep-desc-text">任务成功时自动扣费、失败时自动退款；确认接口幂等汇总结果。</p>
           <h3 class="sub-heading">请求参数</h3>
           <CopyCodeBlock :code="docsCode.confirmRequest" />
           <h3 class="sub-heading">响应</h3>
@@ -978,16 +1069,17 @@ curl -X POST ${docsBaseUrl}/images/edits \\
         <h2 class="doc-title">错误码</h2>
         <div class="table-scroll">
           <table class="rova-table">
-            <thead><tr><th>HTTP</th><th>Code</th><th>说明</th></tr></thead>
+            <thead><tr><th>HTTP</th><th>响应</th><th>说明</th></tr></thead>
             <tbody>
-              <tr><td>400</td><td><code>BAD_REQUEST</code></td><td>请求参数错误</td></tr>
-              <tr><td>401</td><td><code>UNAUTHORIZED</code></td><td>API Key 无效或缺失</td></tr>
-              <tr><td>403</td><td><code>CREDITS_EXHAUSTED</code></td><td>积分不足</td></tr>
-              <tr><td>502</td><td><code>BACKEND_ERROR</code></td><td>后端服务错误</td></tr>
-              <tr><td>502</td><td><code>GENERATION_FAILED</code></td><td>生成失败或超时</td></tr>
+              <tr><td>400</td><td><code>invalid_request_error</code></td><td>请求参数错误</td></tr>
+              <tr><td>401</td><td><code>authentication_error</code></td><td>API Key 无效</td></tr>
+              <tr><td>403</td><td><code>permission_error</code></td><td>权限或积分不足</td></tr>
+              <tr><td>429</td><td><code>rate_limit_error</code></td><td>达到每日限额</td></tr>
+              <tr><td>502</td><td><code>api_error</code></td><td>上游生成失败</td></tr>
             </tbody>
           </table>
         </div>
+        <CopyCodeBlock :code="docsCode.errorResponse" />
       </section>
 
       <section class="doc-block">
@@ -1450,15 +1542,21 @@ curl -X POST ${docsBaseUrl}/images/edits \\
   border-radius: 10px;
 }
 
+.create-key-btn.compact {
+  padding: 7px 12px;
+}
+
 .create-key-box {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  background: #fafafa;
+  border: 1px solid #e4e4e7;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
 
 .input-row {
@@ -1466,41 +1564,150 @@ curl -X POST ${docsBaseUrl}/images/edits \\
   gap: 12px;
 }
 
+@media (max-width: 640px) {
+  .input-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+.input-row input,
+.create-key-box > input,
+.scope-select {
+  height: 42px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #18181b;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .input-row input {
   flex: 1;
-  padding: 0 14px;
-  font-size: 13px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  outline: none;
 }
 
 .scope-select {
-  padding: 0 12px;
-  font-size: 13px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  padding-right: 40px;
+  cursor: pointer;
+}
+
+.input-row input:hover,
+.create-key-box > input:hover,
+.scope-select:hover {
+  border-color: #a1a1aa;
+}
+
+.input-row input:focus,
+.create-key-box > input:focus,
+.scope-select:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+}
+
+.input-row input::placeholder,
+.create-key-box > input::placeholder {
+  color: #a1a1aa;
 }
 
 .create-key-box .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  margin-top: 4px;
 }
 
 .create-key-box button {
-  height: 34px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 20px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.create-key-box .confirm { color: #ffffff; background: #7c3aed; border: 0; }
-.create-key-box .cancel { color: #64748b; background: #e2e8f0; border: 0; }
+.create-key-box .confirm {
+  color: #ffffff;
+  background: #7c3aed;
+  border: 0;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.15);
+}
+
+.create-key-box .confirm:hover {
+  background: #6d28d9;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.25);
+}
+
+.create-key-box .confirm:active {
+  transform: translateY(0);
+}
+
+.create-key-box .cancel {
+  color: #71717a;
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+}
+
+.create-key-box .cancel:hover {
+  color: #18181b;
+  background: #e4e4e7;
+  border-color: #d4d4d8;
+}
+
+.form-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.provider-row:first-child {
+  padding-top: 0;
+}
+
+.provider-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 7px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.provider-meta code {
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  padding: 24px;
+  color: #94a3b8;
+  text-align: center;
+}
 
 .key-list {
   display: flex;

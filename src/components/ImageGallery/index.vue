@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowRight,
   Check,
   Copy,
   Image as ImageIcon,
+  Trash2,
   User,
 } from 'lucide-vue-next'
 import ImageDetailModal from '../ImageDetailModal/index.vue'
@@ -13,10 +14,8 @@ import type { GeneratedImage } from '../../types/generation'
 
 export interface PromptItem extends GeneratedImage {
   title?: string
-  category?: string
   aspectRatio?: string
   seed?: number
-  author?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -38,6 +37,8 @@ const emit = defineEmits<{
 const router = useRouter()
 const copiedId = ref('')
 const selectedDetailItem = ref<PromptItem | null>(null)
+const galleryRoot = ref<HTMLElement | null>(null)
+let resizeFrame = 0
 
 // Track image load state for grayscale to full-color smooth transition
 const loadedImageIds = ref<Set<string>>(new Set())
@@ -54,139 +55,54 @@ function triggerAllTransitions(): void {
   })
 }
 
+function updateShowcaseCard(card: HTMLElement): void {
+  const image = card.querySelector<HTMLImageElement>('.image-thumb')
+  if (!image?.complete || !image.naturalWidth) return
+  const span = Math.ceil((image.offsetHeight + 16) / 24)
+  card.style.gridRowEnd = `span ${span}`
+}
+
+function updateAllShowcaseCards(): void {
+  if (props.mode !== 'showcase') return
+  galleryRoot.value?.querySelectorAll<HTMLElement>('.prompt-card').forEach(updateShowcaseCard)
+}
+
+function handleImageLoad(event: Event): void {
+  if (props.mode !== 'showcase') return
+  const card = (event.currentTarget as HTMLImageElement).closest<HTMLElement>('.prompt-card')
+  if (card) updateShowcaseCard(card)
+}
+
+function handleResize(): void {
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(updateAllShowcaseCards)
+}
+
 onMounted(() => {
   triggerAllTransitions()
+  window.addEventListener('resize', handleResize)
+  void nextTick(updateAllShowcaseCards)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  cancelAnimationFrame(resizeFrame)
 })
 
 watch(() => props.selectedCategory, () => {
   triggerAllTransitions()
+  void nextTick(updateAllShowcaseCards)
+})
+
+watch(() => props.items, () => {
+  triggerAllTransitions()
+  void nextTick(updateAllShowcaseCards)
 })
 
 // Rich curated prompts collection matching rova.chat showcase style
-const mockPromptLibrary: PromptItem[] = [
-  {
-    id: 'prompt-1',
-    title: '创意提示词 #1',
-    url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
-    prompt: '3D 抽象流体水晶雕塑，极简主义，绚丽光谱折射光影，OC 渲染 8k 超精细重置版本',
-    size: '2048x2048',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '3D 渲染',
-    aspectRatio: '1:1',
-    seed: 948201,
-    author: 'TanShilong',
-    createdAt: '2026-07-24T12:00:00Z',
-  },
-  {
-    id: 'prompt-2',
-    title: '创意提示词 #2',
-    url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=1000&auto=format&fit=crop&q=80',
-    prompt: '一个九宫格图片，展现九位当代知名设计师设计的一组物态：机械键盘，包括设计师头像，设计师对于设计的中文文字解读和作品呈现。排版...',
-    size: '2048x1152',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '其他',
-    aspectRatio: '16:9',
-    seed: 120495,
-    author: 'TanShilong',
-    createdAt: '2026-07-24T11:30:00Z',
-  },
-  {
-    id: 'prompt-3',
-    title: '创意提示词 #3',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1000&auto=format&fit=crop&q=80',
-    prompt: '生成一个抖音直播的截图，里面是一个美女在直播',
-    size: '2048x2048',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '人像摄影',
-    aspectRatio: '1:1',
-    seed: 849204,
-    author: 'AI盒子',
-    createdAt: '2026-07-24T10:15:00Z',
-  },
-  {
-    id: 'prompt-4',
-    title: '创意提示词 #4',
-    url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1000&auto=format&fit=crop&q=80',
-    prompt: '基于此角色和背景，请制作一份类似官方设定资料的角色资料卡。包含三视图：正面、侧面和背面，添加角色面部表情的变化，分解并展示服装...',
-    size: '2048x1152',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '插画艺术',
-    aspectRatio: '16:9',
-    seed: 593820,
-    author: 'MANISH1027512',
-    createdAt: '2026-07-24T09:40:00Z',
-  },
-  {
-    id: 'prompt-5',
-    title: '创意提示词 #6',
-    url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1000&auto=format&fit=crop&q=80',
-    prompt: '一张小红书风格的护肤成分知识科普长图，竖版 9:16 比例 (适合长图笔记封面)。整体走科普严谨感：米白背景+深绿主色+数据强调红色。顶...',
-    size: '2048x1152',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: 'UI/界面',
-    aspectRatio: '9:16',
-    seed: 492019,
-    author: 'AI盒子',
-    createdAt: '2026-07-24T08:20:00Z',
-  },
-  {
-    id: 'prompt-6',
-    title: '创意提示词 #7',
-    url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1000&auto=format&fit=crop&q=80',
-    prompt: '赛博朋克极光夜景，高科技城市悬浮飞行器，高精细节 8k 渲染',
-    size: '2048x2048',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '海报插画',
-    aspectRatio: '1:1',
-    seed: 739102,
-    author: 'CyberArtist',
-    createdAt: '2026-07-24T07:10:00Z',
-  },
-  {
-    id: 'prompt-7',
-    title: 'UI类提示词',
-    url: '/showcase/luxeveil-diorama.png',
-    prompt: '奢华护肤品微缩施工现场，商业产品摄影，超写实 CGI 渲染',
-    size: '2048x1152',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '产品电商',
-    aspectRatio: '16:9',
-    seed: 391029,
-    author: 'AI盒子',
-    createdAt: '2026-07-24T06:00:00Z',
-  },
-  {
-    id: 'prompt-8',
-    title: '品牌视觉系统',
-    url: '/showcase/orange-cat-coffee.png',
-    prompt: '一只在咖啡杯旁边打盹的橘猫，柔和自然光，写实风格摄影',
-    size: '2048x2048',
-    model: 'gpt-image-2',
-    source: 'sample',
-    category: '人像摄影',
-    aspectRatio: '1:1',
-    seed: 840192,
-    author: 'AI盒子',
-    createdAt: '2026-07-24T05:00:00Z',
-  },
-]
-
 const displayItems = computed<PromptItem[]>(() => {
-  let list: PromptItem[] = []
-  
-  if (props.mode === 'library') {
-    list = props.items as PromptItem[]
-  } else {
-    // combine user generated items with community prompt library
-    list = [...(props.items as PromptItem[]), ...mockPromptLibrary]
-  }
+  let list = [...props.items] as PromptItem[]
+  // combine user generated items with community prompt library
 
   if (props.selectedCategory && props.selectedCategory !== '全部') {
     list = list.filter(item => {
@@ -220,15 +136,20 @@ function handleRemix(prompt: string): void {
 function openDetail(item: PromptItem): void {
   selectedDetailItem.value = item
 }
+
+function removeImage(id: string): void {
+  if (window.confirm('确认删除这张图片？')) emit('remove', id)
+}
 </script>
 
 <template>
-  <div v-if="displayItems.length || loading" class="gallery-wrapper">
-    <div class="prompts-grid">
+  <div v-if="displayItems.length || loading" ref="galleryRoot" class="gallery-wrapper">
+    <div class="prompts-grid" :class="{ 'is-showcase': mode === 'showcase' }">
       <article
         v-for="(item, idx) in displayItems"
         :key="item.id"
         class="prompt-card"
+        :class="{ 'is-showcase': mode === 'showcase' }"
         :style="{ animationDelay: `${0.05 + idx * 0.05}s` }"
         @click="openDetail(item)"
       >
@@ -240,19 +161,20 @@ function openDetail(item: PromptItem): void {
             loading="lazy"
             class="image-thumb"
             :class="{ 'is-loaded': loadedImageIds.has(item.id) }"
+            @load="handleImageLoad"
           />
           <div
             class="grid-overlay"
             :class="{ 'is-hidden': loadedImageIds.has(item.id) }"
           />
-          <div v-if="item.author" class="author-badge">
+          <div v-if="mode !== 'showcase' && item.author" class="author-badge">
             <User :size="12" />
             <span>{{ item.author }}</span>
           </div>
         </div>
 
         <!-- Card Content -->
-        <div class="card-content">
+        <div v-if="mode !== 'showcase'" class="card-content">
           <h3 class="card-title">{{ item.title || '创意提示词' }}</h3>
 
           <div class="tag-row">
@@ -264,6 +186,15 @@ function openDetail(item: PromptItem): void {
 
           <!-- Card Footer Action Row -->
           <div class="card-footer" @click.stop>
+            <button
+              v-if="mode === 'library'"
+              class="delete-btn"
+              type="button"
+              title="删除图片"
+              @click="removeImage(item.id)"
+            >
+              <Trash2 :size="14" />
+            </button>
             <button
               class="copy-btn"
               type="button"
@@ -298,8 +229,8 @@ function openDetail(item: PromptItem): void {
 
   <div v-else class="empty-state">
     <ImageIcon :size="36" />
-    <h2>暂无相关提示词作品</h2>
-    <p>尝试切换筛选分类或搜索其他关键词</p>
+    <h2>{{ mode === 'showcase' ? '暂无展厅作品' : '暂无相关提示词作品' }}</h2>
+    <p>{{ mode === 'showcase' ? '新的创作将在这里展示' : '尝试切换筛选分类或搜索其他关键词' }}</p>
   </div>
 </template>
 
@@ -314,6 +245,15 @@ function openDetail(item: PromptItem): void {
   gap: 20px;
 }
 
+.prompts-grid.is-showcase {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  grid-auto-rows: 8px;
+  column-gap: 16px;
+  row-gap: 16px;
+}
+
 .prompt-card {
   display: flex;
   flex-direction: column;
@@ -325,6 +265,36 @@ function openDetail(item: PromptItem): void {
   cursor: pointer;
   animation: cardFadeIn 600ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.prompt-card.is-showcase {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.prompt-card.is-showcase:hover {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+}
+
+.prompt-card.is-showcase .image-wrapper {
+  aspect-ratio: auto;
+  border-radius: 12px;
+}
+
+.prompt-card.is-showcase .image-thumb {
+  height: auto;
+  object-fit: contain;
+}
+
+.prompt-card.is-showcase:hover .image-thumb.is-loaded {
+  transform: scale(1);
 }
 
 @keyframes cardFadeIn {
@@ -481,6 +451,19 @@ function openDetail(item: PromptItem): void {
   background: transparent;
   border: 0;
   transition: color 150ms ease;
+}
+
+.delete-btn {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  color: #dc2626;
+  cursor: pointer;
+  background: #fef2f2;
+  border: 0;
+  border-radius: 50%;
 }
 
 .copy-btn:hover {
@@ -698,14 +681,17 @@ function openDetail(item: PromptItem): void {
 
 @media (max-width: 1200px) {
   .prompts-grid { grid-template-columns: repeat(3, 1fr); }
+  .prompts-grid.is-showcase { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 860px) {
   .prompts-grid { grid-template-columns: repeat(2, 1fr); }
+  .prompts-grid.is-showcase { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 580px) {
   .prompts-grid { grid-template-columns: 1fr; }
+  .prompts-grid.is-showcase { grid-template-columns: 1fr; }
 }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 200ms ease; }

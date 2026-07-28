@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   Bell,
   Brush,
@@ -7,7 +7,6 @@ import {
   Compass,
   Headphones,
   Images,
-  Languages,
   LogOut,
   Menu,
   Sparkles,
@@ -24,6 +23,21 @@ const { apiStatus } = storeToRefs(generationStore)
 const userStore = useUserStore()
 const isProfileMenuOpen = ref(false)
 const isContactAdminOpen = ref(false)
+const hasSupport = computed(() => Boolean(
+  userStore.publicConfig.supportEmail || userStore.publicConfig.supportWechat,
+))
+
+const userAvatarUrl = computed(() => {
+  if (userStore.user.avatar && userStore.user.avatar.trim() !== '') {
+    return userStore.user.avatar
+  }
+  const initials = userStore.user.name ? userStore.user.name.charAt(0).toUpperCase() : 'U'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+    <rect width="100" height="100" fill="#f3e8ff"/>
+    <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui, sans-serif" font-size="40" font-weight="bold" fill="#7c3aed">${initials}</text>
+  </svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+})
 
 function handleLoginClick(e: MouseEvent): void {
   e.stopPropagation()
@@ -46,6 +60,17 @@ function handleContactAdmin(): void {
   isContactAdminOpen.value = true
 }
 
+function handleProfileSettings(): void {
+  isProfileMenuOpen.value = false
+  userStore.toggleProfileModal(true)
+}
+
+async function handleLogout(): Promise<void> {
+  await userStore.logout()
+  generationStore.reset()
+  isProfileMenuOpen.value = false
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
 })
@@ -64,15 +89,15 @@ onUnmounted(() => {
     <nav class="nav-list">
       <RouterLink class="nav-item" to="/">
         <Compass :size="21" :stroke-width="1.8" />
-        <span>{{ userStore.lang === 'zh' ? '发现' : 'Explore' }}</span>
+        <span>发现</span>
       </RouterLink>
       <RouterLink class="nav-item" to="/create">
         <Brush :size="21" :stroke-width="1.8" />
-        <span>{{ userStore.lang === 'zh' ? '生图' : 'Create' }}</span>
+        <span>生图</span>
       </RouterLink>
       <RouterLink class="nav-item" to="/gallery">
         <Images :size="21" :stroke-width="1.8" />
-        <span>{{ userStore.lang === 'zh' ? '画廊' : 'Gallery' }}</span>
+        <span>画廊</span>
       </RouterLink>
 
       <RouterLink class="nav-item mobile-only" to="/api">
@@ -105,19 +130,9 @@ onUnmounted(() => {
       >
         <Bell :size="19" :stroke-width="1.7" />
         <span class="notice-wrap">
-          {{ userStore.lang === 'zh' ? '公告' : 'Notice' }}
-          <span class="unread-dot" />
+          公告
+          <span v-if="userStore.hasUnreadAnnouncements" class="unread-dot" />
         </span>
-      </button>
-
-      <button
-        class="utility-item"
-        type="button"
-        title="切换语言 Language"
-        @click="userStore.toggleLanguage"
-      >
-        <Languages :size="19" :stroke-width="1.7" />
-        <span>{{ userStore.lang === 'zh' ? 'EN' : 'CN' }}</span>
       </button>
 
       <!-- User Login / Profile Button -->
@@ -131,18 +146,23 @@ onUnmounted(() => {
           <img
             v-if="userStore.isLoggedIn"
             class="user-avatar"
-            :src="userStore.user.avatar"
+            :src="userAvatarUrl"
             :alt="userStore.user.name"
           />
           <CircleUserRound v-else :size="20" :stroke-width="1.7" />
-          <span>{{ userStore.isLoggedIn ? '我的' : (userStore.lang === 'zh' ? '登录' : 'Login') }}</span>
+          <span>{{ userStore.isLoggedIn ? '我的' : '登录' }}</span>
         </button>
 
         <!-- Logged-in Profile Dropdown Popover -->
         <Transition name="fade">
           <div v-if="isProfileMenuOpen && userStore.isLoggedIn" class="profile-popover">
             <div class="user-info">
-              <img :src="userStore.user.avatar" class="avatar-large" />
+              <img 
+                :src="userAvatarUrl" 
+                class="avatar-large" 
+                title="修改个人资料"
+                @click="handleProfileSettings"
+              />
               <div>
                 <div class="name-row">
                   <span class="user-name">{{ userStore.user.name }}</span>
@@ -161,12 +181,13 @@ onUnmounted(() => {
             </div>
 
             <div class="popover-actions">
-              <button class="action-item" type="button" @click="handleContactAdmin">
+
+              <button v-if="hasSupport" class="action-item" type="button" @click="handleContactAdmin">
                 <Headphones :size="15" />
                 <span>联系管理员</span>
               </button>
 
-              <button class="logout-btn" type="button" @click="userStore.logout(); isProfileMenuOpen = false">
+              <button class="logout-btn" type="button" @click="handleLogout">
                 <LogOut :size="15" />
                 <span>退出登录</span>
               </button>
@@ -180,7 +201,7 @@ onUnmounted(() => {
   <!-- Contact Admin Modal -->
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="isContactAdminOpen" class="admin-modal-backdrop" @click.self="isContactAdminOpen = false">
+      <div v-if="isContactAdminOpen && hasSupport" class="admin-modal-backdrop" @click.self="isContactAdminOpen = false">
         <div class="admin-modal">
           <button class="close-admin-btn" type="button" @click="isContactAdminOpen = false">
             <X :size="18" />
@@ -191,20 +212,16 @@ onUnmounted(() => {
           </div>
 
           <h2>联系系统管理员</h2>
-          <p class="admin-subtitle">如有专属模型需求、充值疑问或 API 接入问题，欢迎随时联系：</p>
+          <p class="admin-subtitle">部署方公开联系方式</p>
 
           <div class="contact-info-card">
-            <div class="info-row">
+            <div v-if="userStore.publicConfig.supportWechat" class="info-row">
               <span class="info-label">客服微信</span>
-              <span class="info-val">Lumora_Support</span>
+              <span class="info-val">{{ userStore.publicConfig.supportWechat }}</span>
             </div>
-            <div class="info-row">
+            <div v-if="userStore.publicConfig.supportEmail" class="info-row">
               <span class="info-label">技术支持邮箱</span>
-              <span class="info-val">admin@lumora.ai</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">服务时间</span>
-              <span class="info-val">周一至周日 9:00 - 22:00</span>
+              <span class="info-val">{{ userStore.publicConfig.supportEmail }}</span>
             </div>
           </div>
 
@@ -358,6 +375,13 @@ onUnmounted(() => {
   height: 38px;
   border-radius: 50%;
   object-fit: cover;
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.avatar-large:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
 }
 
 .name-row {

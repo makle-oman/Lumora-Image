@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Copy,
@@ -18,7 +18,7 @@ import type { GeneratedImage } from '../../types/generation'
 
 const route = useRoute()
 const generationStore = useGenerationStore()
-const { images, activePrompt, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
+const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 
 const prompt = ref('')
 const selectedPureImage = ref<GeneratedImage | null>(null)
@@ -36,10 +36,8 @@ const loadingSteps = [
   '🖌️ 正在构筑细节与纹理...',
   '⚡ 正在进行超清画面渲染...',
 ]
-const currentStepIdx = ref(0)
-const elapsedTimerSeconds = ref('0.0')
+const currentTime = ref(Date.now())
 let timerInterval: ReturnType<typeof setInterval> | null = null
-let stepInterval: ReturnType<typeof setInterval> | null = null
 
 // Quick prompt suggestions for empty state
 const samplePrompts = [
@@ -55,42 +53,30 @@ onMounted(() => {
   }
 })
 
+onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
+})
+
 watch(() => route.query.prompt, (newVal) => {
   if (newVal) {
     prompt.value = String(newVal)
   }
 })
 
-function startGeneratingTimers(): void {
-  stopGeneratingTimers()
-  const startTime = Date.now()
-  elapsedTimerSeconds.value = '0.0'
-  currentStepIdx.value = 0
-
-  timerInterval = setInterval(() => {
-    const elapsedMs = Date.now() - startTime
-    elapsedTimerSeconds.value = (elapsedMs / 1000).toFixed(1)
-  }, 100)
-
-  stepInterval = setInterval(() => {
-    currentStepIdx.value = (currentStepIdx.value + 1) % loadingSteps.length
-  }, 1200)
-}
-
-function stopGeneratingTimers(): void {
+watch(() => activeTasks.value.length, (count) => {
   if (timerInterval) clearInterval(timerInterval)
-  if (stepInterval) clearInterval(stepInterval)
-  timerInterval = null
-  stepInterval = null
+  timerInterval = count
+    ? setInterval(() => { currentTime.value = Date.now() }, 100)
+    : null
+}, { immediate: true })
+
+function elapsedSeconds(createdAt: string): string {
+  return (Math.max(0, currentTime.value - Date.parse(createdAt)) / 1000).toFixed(1)
 }
 
-watch(isLoading, (newLoading) => {
-  if (newLoading) {
-    startGeneratingTimers()
-  } else {
-    stopGeneratingTimers()
-  }
-}, { immediate: true })
+function loadingStepIndex(createdAt: string): number {
+  return Math.floor(Math.max(0, currentTime.value - Date.parse(createdAt)) / 1200) % loadingSteps.length
+}
 
 function formatTime(dateStr: string): string {
   try {
@@ -113,8 +99,6 @@ async function handleRegenerate(img: GeneratedImage): Promise<void> {
   prompt.value = img.prompt
   await generationStore.generate({
     prompt: img.prompt,
-    size: img.size,
-    quality: 'high',
   })
 }
 
@@ -144,17 +128,21 @@ function useSamplePrompt(p: string): void {
     <!-- Creation Vertical Stream (One per row, newest first) -->
     <div class="creation-vertical-stream">
       <!-- 1. Generating Row Item (Appears at top when generating) -->
-      <div v-if="isLoading" class="stream-row-item generating-row-item">
+      <div
+        v-for="task in activeTasks"
+        :key="task.id"
+        class="stream-row-item generating-row-item"
+      >
         <!-- Dynamic Loading Status Pill -->
         <div class="generating-status-pill">
           <span class="color-wheel-icon">🎨</span>
-          <span>{{ loadingSteps[currentStepIdx] }}</span>
+          <span>{{ loadingSteps[loadingStepIndex(task.createdAt)] }}</span>
         </div>
 
         <!-- Glassmorphic Prompt Bubble Container -->
         <div class="prompt-bubble">
-          <span class="prompt-text">{{ activePrompt || '正在为你描绘创意...' }}</span>
-          <span class="timestamp">刚刚</span>
+          <span class="prompt-text">{{ task.prompt || '正在为你描绘创意...' }}</span>
+          <span class="timestamp">{{ formatTime(task.createdAt) }}</span>
         </div>
 
         <!-- Model Tag -->
@@ -169,22 +157,12 @@ function useSamplePrompt(p: string): void {
         <div class="skeleton-canvas-stage">
           <div class="live-timer-badge">
             <LoaderCircle :size="11" class="mini-spin" />
-            <span>生成中.. {{ elapsedTimerSeconds }}s</span>
+            <span>{{ task.status === 'queued' ? '排队中' : '生成中' }}.. {{ elapsedSeconds(task.createdAt) }}s</span>
           </div>
           <div class="canvas-shimmer-wave" />
         </div>
 
         <!-- Disabled Action Bar -->
-        <div class="card-action-bar disabled-bar">
-          <button class="action-pill-btn disabled-btn" type="button" disabled>
-            <Pencil :size="12" />
-            <span>重新编辑</span>
-          </button>
-          <button class="action-pill-btn disabled-btn" type="button" disabled>
-            <RotateCcw :size="12" />
-            <span>再次生成</span>
-          </button>
-        </div>
       </div>
 
       <!-- 2. Generated Images List (Stacked Vertically One Per Row, Newest First) -->

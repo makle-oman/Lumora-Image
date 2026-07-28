@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Sparkles } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import ImageGallery from '../../components/ImageGallery/index.vue'
-import { useGenerationStore } from '../../stores/generation'
+import { useGalleryStore } from '../../stores/gallery'
 
 const router = useRouter()
-const generationStore = useGenerationStore()
-const { images } = storeToRefs(generationStore)
+const galleryStore = useGalleryStore()
+const { items, stats, loading, error } = storeToRefs(galleryStore)
 
 const searchKeyword = ref('')
 const selectedCategory = ref('全部')
@@ -26,59 +26,42 @@ function animateCounters(): void {
     const progress = Math.min(elapsed / duration, 1)
     const ease = 1 - Math.pow(1 - progress, 3) // Ease out cubic
 
-    statNum1.value = Math.floor(ease * 92)
-    statNum2.value = Math.floor(ease * 2)
+    statNum1.value = Math.floor(ease * stats.value.publicImages)
+    statNum2.value = Math.floor(ease * stats.value.categories.length)
 
     if (progress < 1) {
       requestAnimationFrame(step)
     } else {
-      statNum1.value = 92
-      statNum2.value = 2
+      statNum1.value = stats.value.publicImages
+      statNum2.value = stats.value.categories.length
     }
   }
 
   requestAnimationFrame(step)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await Promise.all([galleryStore.loadStats(), galleryStore.search('', '全部', false)])
   animateCounters()
 })
 
-const primaryCategories = [
-  { name: '全部', count: 92 },
-  { name: '海报插画', count: 34 },
-  { name: '产品电商', count: 32 },
-  { name: '人像摄影', count: 22 },
-  { name: 'UI/界面', count: 20 },
-  { name: '3D 渲染', count: 18 },
-  { name: '其他', count: 16 },
-]
+const primaryCategories = computed(() => [
+  { name: '全部', count: stats.value.publicImages },
+  ...stats.value.categories,
+])
 
-const subCategories = [
-  { name: '插画艺术', count: 14 },
-  { name: '时尚', count: 10 },
-  { name: '游戏', count: 8 },
-  { name: '建筑', count: 7 },
-  { name: '品牌', count: 6 },
-  { name: '美食', count: 2 },
-]
-
-const filteredImages = computed(() => {
-  let list = images.value
-  if (searchKeyword.value.trim()) {
-    const kw = searchKeyword.value.toLowerCase()
-    list = list.filter(img => img.prompt.toLowerCase().includes(kw))
-  }
-  return list
-})
-
-function handleSearch(): void {
+async function handleSearch(): Promise<void> {
   // Filter triggers via computed
+  await galleryStore.search(searchKeyword.value, selectedCategory.value)
 }
 
 function handleReuse(prompt: string): void {
   router.push({ path: '/create', query: { prompt } })
 }
+
+watch(selectedCategory, () => {
+  void handleSearch()
+})
 </script>
 
 <template>
@@ -87,7 +70,7 @@ function handleReuse(prompt: string): void {
       <!-- Top Announcement Badge -->
       <div class="top-badge animate-item" style="--delay: 0.05s;">
         <Sparkles :size="14" />
-        <span>精选提示词库 · 来自 GitHub 开源社区</span>
+        <span>公共作品库</span>
       </div>
 
       <!-- Main Title -->
@@ -97,13 +80,13 @@ function handleReuse(prompt: string): void {
       <!-- Stat Counters with Live Number Animation -->
       <div class="stats-row animate-item" style="--delay: 0.3s;">
         <div class="stat-item">
-          <div class="stat-num">{{ statNum1 }}+</div>
-          <div class="stat-label">精选提示词</div>
+          <div class="stat-num">{{ statNum1 }}</div>
+          <div class="stat-label">展厅作品</div>
         </div>
         <div class="stat-divider" />
         <div class="stat-item">
           <div class="stat-num">{{ statNum2 }}</div>
-          <div class="stat-label">数据源</div>
+          <div class="stat-label">作品分类</div>
         </div>
       </div>
 
@@ -140,31 +123,19 @@ function handleReuse(prompt: string): void {
           </button>
         </div>
 
-        <div class="cat-row sub">
-          <button
-            v-for="(cat, idx) in subCategories"
-            :key="cat.name"
-            class="cat-pill"
-            :class="{ active: selectedCategory === cat.name }"
-            :style="{ animationDelay: `${0.75 + idx * 0.04}s` }"
-            @click="selectedCategory = cat.name"
-          >
-            <span>{{ cat.name }}</span>
-            <span class="count">({{ cat.count }})</span>
-          </button>
-        </div>
       </div>
     </header>
 
     <!-- Prompts Grid Component -->
     <div class="grid-wrapper animate-item" style="--delay: 0.58s;">
       <ImageGallery
-        :items="filteredImages"
+        :items="items"
+        :loading="loading"
         :selected-category="selectedCategory"
         mode="explore"
-        @remove="generationStore.removeImage"
         @reuse="handleReuse"
       />
+      <p v-if="error" class="gallery-error" role="alert">{{ error }}</p>
     </div>
   </section>
 </template>
@@ -174,6 +145,12 @@ function handleReuse(prompt: string): void {
   width: min(1280px, calc(100% - 64px));
   margin: 0 auto;
   padding: 80px 0 100px;
+}
+
+.gallery-error {
+  color: #dc2626;
+  font-size: 13px;
+  text-align: center;
 }
 
 .prompts-header {

@@ -1,19 +1,11 @@
-export const imageSizes = [
-  { value: '1024x1024', label: '1:1 标准' },
-  { value: '2048x2048', label: '1:1 2K' },
-  { value: '2048x1152', label: '16:9 2K' },
-  { value: '1152x2048', label: '9:16 2K' },
-] as const
-
-export const imageQualities = ['low', 'medium', 'high'] as const
-
-export type ImageSize = (typeof imageSizes)[number]['value']
-export type ImageQuality = (typeof imageQualities)[number]
+export type ImageSize = 'auto' | `${number}x${number}`
 
 export type GenerateImageRequest = Readonly<{
   prompt: string
-  size: ImageSize
-  quality: ImageQuality
+  n?: 1 | 2 | 3 | 4
+  isPublic?: boolean
+  images?: ReadonlyArray<File>
+  batch?: boolean
 }>
 
 export type GeneratedImage = Readonly<{
@@ -24,12 +16,29 @@ export type GeneratedImage = Readonly<{
   model: 'gpt-image-2'
   createdAt: string
   source: 'sample' | 'generated'
+  format: 'png' | 'jpeg' | 'webp'
+  isPublic: boolean
+  category: string
+  author?: string
 }>
 
 export type GenerationRequestState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'success'; imageId: string }
+  | { status: 'success'; imageIds: ReadonlyArray<string> }
   | { status: 'error'; message: string }
 
-export type ApiStatus = 'checking' | 'ready' | 'missing' | 'unreachable'
+export type ApiStatus = 'checking' | 'ready' | 'missing' | 'unreachable' | 'unauthenticated'
+
+export type HealthStatus = Readonly<{
+  server: 'ready'
+  authenticated: boolean
+  providerConfigured: boolean
+  model: 'gpt-image-2'
+}>
+
+export type PublicStats = Readonly<{
+  todayGenerations: number
+  publicImages: number
+  categories: ReadonlyArray<Readonly<{ name: string; count: number }>>
+}>

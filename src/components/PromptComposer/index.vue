@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  Check,
   CircleAlert,
   ChevronDown,
   Grid2X2,
   Layers3,
   LoaderCircle,
   Plus,
-  RotateCcw,
   Sparkles,
   X,
   Zap,
@@ -16,7 +14,6 @@ import {
 import {
   type ApiStatus,
   type GenerateImageRequest,
-  type ImageSize,
 } from '../../types/generation'
 
 const props = withDefaults(defineProps<{
@@ -33,9 +30,10 @@ const emit = defineEmits<{
 }>()
 
 const prompt = defineModel<string>({ default: '' })
-const size = ref<ImageSize>('2048x2048')
-const isPublic = ref(false)
 const selectedCount = ref(1)
+const referenceInput = ref<HTMLInputElement | null>(null)
+const references = ref<Array<{ id: string; file: File; url: string }>>([])
+const batchEdit = ref(false)
 const promptHeight = ref(88)
 const minPromptHeight = 88
 const maxPromptHeight = 360
@@ -46,28 +44,9 @@ let isResizing = false
 // Parameter Popover State
 const isParamPopoverOpen = ref(false)
 const messageText = ref('')
-const isStatusDismissed = ref(false)
+const showApiStatus = ref(false)
 let messageTimeout: ReturnType<typeof setTimeout> | null = null
 
-interface AspectRatioOption {
-  id: string
-  label: string
-  subLabel: string
-  width: number
-  height: number
-  sizeValue: ImageSize
-}
-
-const aspectRatios: AspectRatioOption[] = [
-  { id: 'auto', label: '智能', subLabel: '自动', width: 14, height: 14, sizeValue: '2048x2048' },
-  { id: '1-1', label: '1:1', subLabel: '正方形', width: 15, height: 15, sizeValue: '2048x2048' },
-  { id: '9-16', label: '9:16', subLabel: '手机屏', width: 11, height: 18, sizeValue: '1152x2048' },
-  { id: '16-9', label: '16:9', subLabel: '影院屏', width: 19, height: 11, sizeValue: '2048x1152' },
-  { id: '2-3', label: '2:3', subLabel: '海报', width: 12, height: 17, sizeValue: '1152x2048' },
-  { id: '3-2', label: '3:2', subLabel: '摄影', width: 17, height: 12, sizeValue: '2048x1152' },
-]
-
-const selectedRatioId = ref('auto')
 const countOptions = [
   { count: 1, cost: '1 积分' },
   { count: 2, cost: '2 积分' },
@@ -75,19 +54,7 @@ const countOptions = [
   { count: 4, cost: '4 积分' },
 ]
 
-const currentRatioLabel = computed(() => {
-  const currentOption = aspectRatios.find(r => r.id === selectedRatioId.value)
-  return currentOption ? currentOption.label : '智能'
-})
-
-function selectRatio(option: AspectRatioOption): void {
-  selectedRatioId.value = option.id
-  size.value = option.sizeValue
-}
-
 function resetDefaults(): void {
-  selectedRatioId.value = 'auto'
-  size.value = '2048x2048'
   selectedCount.value = 1
 }
 
@@ -105,22 +72,25 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   clearMessage()
+  for (const reference of references.value) URL.revokeObjectURL(reference.url)
 })
 
 const canGenerate = computed(() => (
   prompt.value.trim().length > 0
   && !props.loading
-  && props.apiStatus === 'ready'
 ))
 
 const statusText = computed(() => {
+  if (props.errorMessage) return props.errorMessage
+  if (props.apiStatus === 'unauthenticated') return '登录后即可生成图片'
   if (props.apiStatus === 'missing') return '服务端 API 未配置'
   if (props.apiStatus === 'unreachable') return '无法连接本地 API 服务'
-  return props.errorMessage
+  if (props.apiStatus === 'checking') return '服务正在连接，请稍后重试'
+  return ''
 })
 
 const visibleStatusText = computed(() => (
-  isStatusDismissed.value ? '' : statusText.value
+  props.errorMessage || showApiStatus.value ? statusText.value : ''
 ))
 
 function clearMessage(): void {
@@ -140,26 +110,46 @@ function showMessage(message: string): void {
   }, 4500)
 }
 
-watch(statusText, (message) => {
-  if (message) {
-    isStatusDismissed.value = false
-    showMessage(message)
-  } else {
-    clearMessage()
-  }
-})
-
 function submit(): void {
   if (!canGenerate.value) return
+  if (props.apiStatus !== 'ready') {
+    showApiStatus.value = true
+    return
+  }
   const request: GenerateImageRequest = {
     prompt: prompt.value.trim(),
-    size: size.value,
-    quality: 'high',
+    n: selectedCount.value as 1 | 2 | 3 | 4,
+    isPublic: true,
+    images: references.value.map(item => item.file),
+    batch: batchEdit.value,
   }
-  isStatusDismissed.value = true
+  showApiStatus.value = false
   clearMessage()
   emit('generate', request)
   prompt.value = ''
+}
+
+function selectReferenceImages(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  const available = 4 - references.value.length
+  const valid = files
+    .filter(file => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) && file.size <= 50 * 1024 * 1024)
+    .slice(0, available)
+  if (valid.length !== files.length) showMessage('最多上传 4 张 PNG、JPEG 或 WebP 图片，每张不超过 50MB')
+  references.value.push(...valid.map(file => ({
+    id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+    file,
+    url: URL.createObjectURL(file),
+  })))
+}
+
+function removeReference(id: string): void {
+  const reference = references.value.find(item => item.id === id)
+  if (reference) URL.revokeObjectURL(reference.url)
+  references.value = references.value.filter(item => item.id !== id)
+  if (!references.value.length) batchEdit.value = false
 }
 
 function handleEnter(event: KeyboardEvent): void {
@@ -230,9 +220,17 @@ function stopPromptResize(event: PointerEvent): void {
     </button>
 
     <div class="prompt-row">
-      <button class="add-button" type="button" title="添加参考图" aria-label="添加参考图">
+      <button class="add-button" type="button" title="添加参考图" aria-label="添加参考图" @click="referenceInput?.click()">
         <Plus :size="20" :stroke-width="1.7" />
       </button>
+      <input
+        ref="referenceInput"
+        class="sr-only"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        @change="selectReferenceImages"
+      />
       <label class="sr-only" for="image-prompt">请输入你的创意</label>
       <textarea
         id="image-prompt"
@@ -245,15 +243,20 @@ function stopPromptResize(event: PointerEvent): void {
       />
     </div>
 
+    <div v-if="references.length" class="reference-strip">
+      <div v-for="reference in references" :key="reference.id" class="reference-item">
+        <img :src="reference.url" :alt="reference.file.name" />
+        <button type="button" :title="`移除 ${reference.file.name}`" @click="removeReference(reference.id)">
+          <X :size="12" />
+        </button>
+      </div>
+    </div>
+
     <div class="composer-controls">
       <div class="model-options">
         <button class="model-button is-active" type="button">
           <Sparkles :size="12" :stroke-width="2.2" />
           GPT-IMAGE-2
-        </button>
-        <button class="model-button" type="button" disabled>
-          <Sparkles :size="12" :stroke-width="2.2" />
-          Banana2
         </button>
       </div>
 
@@ -268,9 +271,7 @@ function stopPromptResize(event: PointerEvent): void {
           >
             <div class="btn-left">
               <Grid2X2 :size="13" :stroke-width="2" class="param-icon" />
-              <span>{{ currentRatioLabel }}</span>
-              <span class="divider">•</span>
-              <span>{{ selectedCount }}张</span>
+              <span>{{ selectedCount }} 张</span>
             </div>
             <ChevronDown
               :size="12"
@@ -287,7 +288,7 @@ function stopPromptResize(event: PointerEvent): void {
               <div class="popover-header">
                 <div class="header-title">
                   <Grid2X2 :size="14" class="purple-icon" />
-                  <span>图像渲染参数设置</span>
+                  <span>生成张数</span>
                 </div>
                 <button
                   class="reset-link-btn"
@@ -295,46 +296,14 @@ function stopPromptResize(event: PointerEvent): void {
                   title="重置参数"
                   @click="resetDefaults"
                 >
-                  <RotateCcw :size="12" />
                   重置
                 </button>
               </div>
 
               <!-- Section 1: Aspect Ratio Selection -->
-              <div class="popover-section">
-                <div class="section-label-row">
-                  <span class="section-label">画幅比例</span>
-                  <span class="section-hint">点击选择最佳构图</span>
-                </div>
-
-                <div class="ratio-grid">
-                  <button
-                    v-for="item in aspectRatios"
-                    :key="item.id"
-                    type="button"
-                    class="ratio-card"
-                    :class="{ active: selectedRatioId === item.id }"
-                    @click="selectRatio(item)"
-                  >
-                    <div class="ratio-preview-box">
-                      <div
-                        class="ratio-shape-inner"
-                        :style="{ width: item.width + 'px', height: item.height + 'px' }"
-                      />
-                    </div>
-                    <div class="ratio-text-group">
-                      <span class="ratio-main-label">{{ item.label }}</span>
-                      <span class="ratio-sub-label">{{ item.subLabel }}</span>
-                    </div>
-                    <div class="check-badge" :class="{ show: selectedRatioId === item.id }">
-                      <Check :size="10" :stroke-width="3" />
-                    </div>
-                  </button>
-                </div>
-              </div>
 
               <!-- Section 2: Generation Batch Count -->
-              <div class="popover-section" style="margin-top: 20px;">
+              <div class="popover-section">
                 <div class="section-label-row">
                   <span class="section-label">并发生成张数</span>
                   <span class="section-hint"><Zap :size="11" class="amber-icon" /> 按量消耗积分</span>
@@ -357,7 +326,7 @@ function stopPromptResize(event: PointerEvent): void {
 
               <!-- Popover Footer Action -->
               <div class="popover-footer">
-                <span class="footer-tip">已选 <strong>{{ currentRatioLabel }}</strong> 比例 · <strong>{{ selectedCount }}</strong> 张输出</span>
+                <span class="footer-tip">已选 <strong>{{ selectedCount }}</strong> 张输出</span>
                 <button
                   class="done-btn"
                   type="button"
@@ -370,17 +339,18 @@ function stopPromptResize(event: PointerEvent): void {
           </Transition>
         </div>
 
-        <button v-if="showBatchEdit" class="batch-button" type="button">
+        <button
+          v-if="showBatchEdit"
+          class="batch-button"
+          :class="{ active: batchEdit }"
+          type="button"
+          :disabled="!references.length"
+          @click="batchEdit = !batchEdit"
+        >
           <Layers3 :size="14" :stroke-width="1.8" />
           批量编辑
         </button>
       </div>
-
-      <label class="privacy-control">
-        <span>公开</span>
-        <input v-model="isPublic" type="checkbox" />
-        <span class="toggle" aria-hidden="true" />
-      </label>
 
       <!-- Generate Button with Ultra-smooth 60fps Glowing Pulse during Loading -->
       <button
@@ -418,6 +388,44 @@ function stopPromptResize(event: PointerEvent): void {
   min-height: 114px;
   gap: 12px;
   padding: 18px 20px 8px;
+}
+
+.reference-strip {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 12px 76px;
+  overflow-x: auto;
+}
+
+.reference-item {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+}
+
+.reference-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid #dddddd;
+  border-radius: 8px;
+}
+
+.reference-item button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  color: #ffffff;
+  cursor: pointer;
+  background: #18181b;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
 }
 
 /* iOS Style Drag Handle Bar at Top Border (GPU accelerated 60fps) */
@@ -863,51 +871,14 @@ textarea::placeholder {
   cursor: pointer;
 }
 
-.privacy-control {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: auto;
-  color: #555555;
-  font-size: 12px;
-  cursor: pointer;
+.batch-button.active {
+  color: #ffffff;
+  background: #18181b;
 }
 
-.privacy-control input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.toggle {
-  position: relative;
-  width: 34px;
-  height: 18px;
-  background: #dddddd;
-  border-radius: 10px;
-  transition: background-color 180ms ease;
-}
-
-.toggle::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  content: '';
-  background: #ffffff;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
-  transition: transform 180ms ease;
-}
-
-.privacy-control input:checked + .toggle {
-  background: #1a1a1a;
-}
-
-.privacy-control input:checked + .toggle::after {
-  transform: translateX(16px);
+.batch-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .generate-button {
@@ -1075,6 +1046,11 @@ textarea::placeholder {
   .prompt-row {
     min-height: 111px;
     padding: 16px 14px 7px;
+  }
+
+  .reference-strip {
+    padding-right: 14px;
+    padding-left: 70px;
   }
 
   .system-message {

@@ -1,155 +1,306 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import {
+  activateProvider as activateProviderRequest,
+  authenticate as authenticateRequest,
+  createApiKey as createApiKeyRequest,
+  createProvider as createProviderRequest,
+  deleteProvider as deleteProviderRequest,
+  endSession,
+  getAnnouncements,
+  getApiKeys,
+  getProviders,
+  getPublicConfig,
+  getSession,
+  getUsage,
+  revokeApiKey as revokeApiKeyRequest,
+  updateProfile as updateProfileRequest,
+  type AnnouncementItem,
+  type ApiKeyItem,
+  type ProviderItem,
+  type PublicConfig,
+  type UsageSummary,
+  type UserProfile,
+} from '../services/userApi'
+import { ApiError } from '../services/http'
 
-export interface UserProfile {
-  id: string
-  name: string
-  email: string
-  avatar: string
-  plan: 'Free' | 'Pro' | 'Enterprise'
-  credits: number
+export type { AnnouncementItem, ApiKeyItem, ProviderItem, PublicConfig, UsageSummary, UserProfile }
+
+const emptyUser: UserProfile = {
+  id: '',
+  name: '',
+  email: '',
+  avatar: '',
+  plan: 'Free',
+  credits: 0,
+  creditsReserved: 0,
 }
 
-export interface ApiKeyItem {
-  id: string
-  name: string
-  key: string
-  createdAt: string
-  lastUsed: string
-  status: 'active' | 'revoked'
+const emptyUsage: UsageSummary = {
+  todayCalls: 0,
+  dailyLimit: 10_000,
+  averageLatencyMs: 0,
+  items: [],
 }
 
-export interface AnnouncementItem {
-  id: string
-  title: string
-  content: string
-  date: string
-  type: 'feature' | 'system' | 'update'
-  isNew?: boolean
-}
+const announcementReadKey = 'lumora:announcement-read-version'
 
 export const useUserStore = defineStore('user', () => {
   // Auth state
-  const isLoggedIn = ref(true)
-  const user = ref<UserProfile>({
-    id: 'usr-849201',
-    name: 'Lumora 创作者',
-    email: 'creator@lumora.ai',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    plan: 'Pro',
-    credits: 2850,
-  })
+  const isLoggedIn = ref(false)
+  const user = ref<UserProfile>({ ...emptyUser })
+  const authError = ref('')
 
   // Modals state
   const isAuthModalOpen = ref(false)
   const isNoticeModalOpen = ref(false)
-  const lang = ref<'zh' | 'en'>('zh')
+  const isProfileModalOpen = ref(false)
 
   // API Keys state
-  const apiKeys = ref<ApiKeyItem[]>([
-    {
-      id: 'key-1',
-      name: 'Default Production Key',
-      key: 'lum-live-8f4920a1b2c3d4e5f6',
-      createdAt: '2026-07-01',
-      lastUsed: '刚刚',
-      status: 'active',
-    },
-    {
-      id: 'key-2',
-      name: 'Dev Testing Key',
-      key: 'lum-test-3a1b2c4d5e6f7a8b9c',
-      createdAt: '2026-07-15',
-      lastUsed: '2 天前',
-      status: 'active',
-    },
-  ])
+  const apiKeys = ref<ApiKeyItem[]>([])
+  const oneTimeApiKey = ref('')
 
   // System Announcements
-  const announcements = ref<AnnouncementItem[]>([
-    {
-      id: 'ann-1',
-      title: 'Lumora Ambient Matrix 全新重构上线',
-      content: '全新升级 2D 极简流光渐变矩阵引擎，提供极致流畅的交互体验与更高饱和度的色彩表达！',
-      date: '2026-07-24',
-      type: 'feature',
-      isNew: true,
-    },
-    {
-      id: 'ann-2',
-      title: 'GPT-IMAGE-2 API 渲染效率提升 40%',
-      content: '底层集群节点扩容完毕，现在图像生成速度已缩短至 1.8 秒以内，并发能力大幅增强。',
-      date: '2026-07-20',
-      type: 'update',
-      isNew: false,
-    },
-    {
-      id: 'ann-3',
-      title: 'API 开发者中心与模型参数对接开放',
-      content: '现已支持开放 API Key 自定义配置，支持 cURL、Python、Node.js 多语言接入。',
-      date: '2026-07-12',
-      type: 'system',
-      isNew: false,
-    },
-  ])
+  const announcements = ref<AnnouncementItem[]>([])
+  const hasUnreadAnnouncements = ref(false)
+
+  const providers = ref<ProviderItem[]>([])
+  const publicConfig = ref<PublicConfig>({ supportEmail: null, supportWechat: null })
+  const usage = ref<UsageSummary>({ ...emptyUsage })
+  const operationError = ref('')
+
+  async function initialize(): Promise<void> {
+    authError.value = ''
+    operationError.value = ''
+    try {
+      const profile = await getSession()
+      if (profile) {
+        user.value = profile
+        isLoggedIn.value = true
+      }
+    }
+    catch {
+      isLoggedIn.value = false
+    }
+
+    try {
+      const [announcementItems, config] = await Promise.all([getAnnouncements(), getPublicConfig()])
+      announcements.value = announcementItems
+      publicConfig.value = config
+      const version = announcementItems.map(item => `${item.id}:${item.date}:${item.title}`).join('|')
+      hasUnreadAnnouncements.value = Boolean(version && localStorage.getItem(announcementReadKey) !== version)
+    }
+    catch {
+      announcements.value = []
+      hasUnreadAnnouncements.value = false
+      publicConfig.value = { supportEmail: null, supportWechat: null }
+    }
+
+    if (isLoggedIn.value) await loadAccountData(false)
+  }
+
+  async function loadAccountData(showError = true): Promise<void> {
+    if (showError) operationError.value = ''
+    try {
+      const [keys, providerItems, usageSummary] = await Promise.all([
+        getApiKeys(),
+        getProviders(),
+        getUsage(),
+      ])
+      apiKeys.value = keys
+      providers.value = providerItems
+      usage.value = usageSummary
+    }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 401) expireSession()
+      if (showError) operationError.value = error instanceof Error ? error.message : '账户数据加载失败'
+    }
+  }
 
   function toggleAuthModal(open?: boolean): void {
     isAuthModalOpen.value = open ?? !isAuthModalOpen.value
+    if (isAuthModalOpen.value) authError.value = ''
   }
 
   function toggleNoticeModal(open?: boolean): void {
-    isNoticeModalOpen.value = open ?? !isNoticeModalOpen.value
+    const nextOpen = open ?? !isNoticeModalOpen.value
+    isNoticeModalOpen.value = nextOpen
+    if (nextOpen && announcements.value.length) {
+      const version = announcements.value.map(item => `${item.id}:${item.date}:${item.title}`).join('|')
+      localStorage.setItem(announcementReadKey, version)
+      hasUnreadAnnouncements.value = false
+    }
   }
 
-  function toggleLanguage(): void {
-    lang.value = lang.value === 'zh' ? 'en' : 'zh'
+  function toggleProfileModal(open?: boolean): void {
+    isProfileModalOpen.value = open ?? !isProfileModalOpen.value
+    if (isProfileModalOpen.value) operationError.value = ''
   }
 
-  function login(email: string): void {
-    isLoggedIn.value = true
-    user.value.email = email
-    user.value.name = email.split('@')[0] || 'Lumora 创作者'
-    isAuthModalOpen.value = false
+  async function authenticate(mode: 'login' | 'register', email: string, password: string): Promise<void> {
+    authError.value = ''
+    try {
+      user.value = await authenticateRequest(mode, email, password)
+      isLoggedIn.value = true
+      await loadAccountData()
+    }
+    catch (error) {
+      authError.value = error instanceof Error ? error.message : '登录失败'
+      throw error
+    }
   }
 
-  function logout(): void {
+  async function logout(): Promise<void> {
+    operationError.value = ''
+    try {
+      await endSession()
+      isLoggedIn.value = false
+      user.value = { ...emptyUser }
+      apiKeys.value = []
+      oneTimeApiKey.value = ''
+      providers.value = []
+      usage.value = { ...emptyUsage }
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '退出失败'
+    }
+  }
+
+  async function updateProfile(data: { email?: string; name?: string; password?: string; avatar?: string }): Promise<void> {
+    operationError.value = ''
+    try {
+      const updatedUser = await updateProfileRequest(data)
+      user.value = updatedUser
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '更新个人资料失败'
+      throw error
+    }
+  }
+
+  async function createApiKey(name: string, scope: ApiKeyItem['scope']): Promise<string> {
+    operationError.value = ''
+    try {
+      const created = await createApiKeyRequest(name, scope)
+      apiKeys.value = [created.item, ...apiKeys.value]
+      oneTimeApiKey.value = created.secret
+      return created.secret
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : 'API Key 创建失败'
+      throw error
+    }
+  }
+
+  async function revokeApiKey(id: string): Promise<void> {
+    operationError.value = ''
+    try {
+      await revokeApiKeyRequest(id)
+      const found = apiKeys.value.find(item => item.id === id)
+      if (found) found.status = 'revoked'
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : 'API Key 废弃失败'
+    }
+  }
+
+  async function createProvider(input: { name: string; baseUrl: string; apiKey: string }): Promise<void> {
+    operationError.value = ''
+    try {
+      const item = await createProviderRequest(input)
+      providers.value = [item, ...providers.value]
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '调用方创建失败'
+      throw error
+    }
+  }
+
+  async function activateProvider(id: string): Promise<void> {
+    operationError.value = ''
+    try {
+      await activateProviderRequest(id)
+      providers.value = await getProviders()
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '调用方启用失败'
+    }
+  }
+
+  async function deleteProvider(id: string): Promise<void> {
+    operationError.value = ''
+    try {
+      await deleteProviderRequest(id)
+      providers.value = await getProviders()
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '调用方删除失败'
+    }
+  }
+
+  async function refreshUsage(): Promise<void> {
+    try {
+      usage.value = await getUsage()
+    }
+    catch (error) {
+      operationError.value = error instanceof Error ? error.message : '调用记录加载失败'
+    }
+  }
+
+  async function refreshProfile(): Promise<void> {
+    const profile = await getSession()
+    if (profile) user.value = profile
+  }
+
+  function setCredits(credits: number): void {
+    user.value.credits = credits
+  }
+
+  function clearOneTimeApiKey(): void {
+    oneTimeApiKey.value = ''
+  }
+
+  function expireSession(): void {
     isLoggedIn.value = false
-  }
-
-  function createApiKey(name: string): ApiKeyItem {
-    const newKey: ApiKeyItem = {
-      id: `key-${Date.now()}`,
-      name: name || 'API Key',
-      key: `lum-live-${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`,
-      createdAt: new Date().toISOString().split('T')[0] ?? '2026-07-24',
-      lastUsed: '未调用',
-      status: 'active',
-    }
-    apiKeys.value = [newKey, ...apiKeys.value]
-    return newKey
-  }
-
-  function revokeApiKey(id: string): void {
-    const found = apiKeys.value.find(k => k.id === id)
-    if (found) {
-      found.status = 'revoked'
-    }
+    user.value = { ...emptyUser }
+    apiKeys.value = []
+    oneTimeApiKey.value = ''
+    providers.value = []
+    usage.value = { ...emptyUsage }
   }
 
   return {
     isLoggedIn,
     user,
+    authError,
     isAuthModalOpen,
     isNoticeModalOpen,
-    lang,
+    isProfileModalOpen,
     apiKeys,
+    oneTimeApiKey,
     announcements,
+    hasUnreadAnnouncements,
+    providers,
+    publicConfig,
+    usage,
+    operationError,
+    initialize,
+    loadAccountData,
     toggleAuthModal,
     toggleNoticeModal,
-    toggleLanguage,
-    login,
+    toggleProfileModal,
+    authenticate,
     logout,
+    updateProfile,
     createApiKey,
     revokeApiKey,
+    createProvider,
+    activateProvider,
+    deleteProvider,
+    refreshProfile,
+    refreshUsage,
+    setCredits,
+    clearOneTimeApiKey,
+    expireSession,
   }
 })

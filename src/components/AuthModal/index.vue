@@ -1,21 +1,39 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowRight, CheckCircle2, Lock, Mail, Sparkles, X } from 'lucide-vue-next'
+import { CheckCircle2, Lock, Mail, Sparkles, X } from 'lucide-vue-next'
+import { useGenerationStore } from '../../stores/generation'
 import { useUserStore } from '../../stores/user'
 
 const userStore = useUserStore()
+const generationStore = useGenerationStore()
 const mode = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
 const isSuccess = ref(false)
+const isSubmitting = ref(false)
 
-function handleSubmit(): void {
-  if (!email.value) return
-  userStore.login(email.value)
-  isSuccess.value = true
-  setTimeout(() => {
+async function handleSubmit(): Promise<void> {
+  if (!email.value || !password.value || isSubmitting.value) return
+  isSubmitting.value = true
+  try {
+    await userStore.authenticate(mode.value, email.value, password.value)
+    await generationStore.resumeTasks()
+    await Promise.all([
+      generationStore.loadImages(),
+      generationStore.checkConfiguration(),
+    ])
+    isSuccess.value = true
+    setTimeout(() => {
+      isSuccess.value = false
+      userStore.toggleAuthModal(false)
+    }, 900)
+  }
+  catch {
     isSuccess.value = false
-  }, 1500)
+  }
+  finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -39,7 +57,7 @@ function handleSubmit(): void {
 
           <div v-if="isSuccess" class="success-box">
             <CheckCircle2 :size="36" />
-            <h3>登录成功！</h3>
+            <h3>{{ mode === 'login' ? '登录成功！' : '注册成功！' }}</h3>
             <p>正在进入 Lumora 创作者空间...</p>
           </div>
 
@@ -72,9 +90,10 @@ function handleSubmit(): void {
               </div>
             </div>
 
-            <button class="submit-btn" type="submit">
-              <span>{{ mode === 'login' ? '立即登录' : '创建账号' }}</span>
-              <ArrowRight :size="16" />
+            <p v-if="userStore.authError" class="auth-error">{{ userStore.authError }}</p>
+
+            <button class="submit-btn" type="submit" :disabled="isSubmitting">
+              <span>{{ isSubmitting ? '提交中...' : mode === 'login' ? '立即登录' : '创建账号' }}</span>
             </button>
           </form>
 
@@ -223,6 +242,17 @@ function handleSubmit(): void {
   border: 0;
   border-radius: 12px;
   transition: opacity 150ms ease;
+}
+
+.submit-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-error {
+  margin: -4px 0 0;
+  color: #dc2626;
+  font-size: 12px;
 }
 
 .submit-btn:hover {

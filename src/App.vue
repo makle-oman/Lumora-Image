@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
 import AmbientScene from './components/AmbientScene/index.vue'
 import AppSidebar from './components/AppSidebar/index.vue'
 import AuthModal from './components/AuthModal/index.vue'
 import NoticeModal from './components/NoticeModal/index.vue'
-import { useGenerationStore } from './stores/generation'
-
-const generationStore = useGenerationStore()
-
-onMounted(() => {
-  void generationStore.checkConfiguration()
-})
+import ProfileModal from './components/ProfileModal/index.vue'
 </script>
 
 <template>
@@ -28,6 +21,7 @@ onMounted(() => {
     <!-- Global Modals -->
     <NoticeModal />
     <AuthModal />
+    <ProfileModal />
   </div>
 </template>
 
