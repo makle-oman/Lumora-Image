@@ -2,6 +2,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { useDesktopStore } from './stores/desktop'
 import { useGenerationStore } from './stores/generation'
 import { useGalleryStore } from './stores/gallery'
 import { useUserStore } from './stores/user'
@@ -13,9 +14,10 @@ const pinia = createPinia()
 app.use(pinia)
 
 const userStore = useUserStore(pinia)
+const desktopStore = useDesktopStore(pinia)
 const generationStore = useGenerationStore(pinia)
 const galleryStore = useGalleryStore(pinia)
-await userStore.initialize()
+await Promise.all([userStore.initialize(), desktopStore.initialize()])
 router.beforeEach((to) => {
   if (!to.meta.requiresAuth || userStore.isLoggedIn) return true
   userStore.toggleAuthModal(true)

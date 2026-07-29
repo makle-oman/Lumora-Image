@@ -2,6 +2,7 @@
 import AmbientScene from './components/AmbientScene/index.vue'
 import AppSidebar from './components/AppSidebar/index.vue'
 import AuthModal from './components/AuthModal/index.vue'
+import DesktopStorageModal from './components/DesktopStorageModal/index.vue'
 import NoticeModal from './components/NoticeModal/index.vue'
 import ProfileModal from './components/ProfileModal/index.vue'
 </script>
@@ -22,6 +23,7 @@ import ProfileModal from './components/ProfileModal/index.vue'
     <NoticeModal />
     <AuthModal />
     <ProfileModal />
+    <DesktopStorageModal />
   </div>
 </template>
 

@@ -5,6 +5,7 @@ import {
   Brush,
   CircleUserRound,
   Compass,
+  FolderOpen,
   Headphones,
   Images,
   LogOut,
@@ -15,10 +16,12 @@ import {
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useGenerationStore } from '../../stores/generation'
+import { useDesktopStore } from '../../stores/desktop'
 import { useUserStore } from '../../stores/user'
 
 const generationStore = useGenerationStore()
 const { apiStatus } = storeToRefs(generationStore)
+const desktopStore = useDesktopStore()
 
 const userStore = useUserStore()
 const isProfileMenuOpen = ref(false)
@@ -63,6 +66,11 @@ function handleContactAdmin(): void {
 function handleProfileSettings(): void {
   isProfileMenuOpen.value = false
   userStore.toggleProfileModal(true)
+}
+
+function handleStorageSettings(): void {
+  isProfileMenuOpen.value = false
+  desktopStore.openStorageModal()
 }
 
 async function handleLogout(): Promise<void> {
@@ -133,6 +141,17 @@ onUnmounted(() => {
           公告
           <span v-if="userStore.hasUnreadAnnouncements" class="unread-dot" />
         </span>
+      </button>
+
+      <button
+        v-if="desktopStore.available"
+        class="utility-item"
+        type="button"
+        title="图片存放位置"
+        @click="handleStorageSettings"
+      >
+        <FolderOpen :size="19" :stroke-width="1.7" />
+        <span>存放</span>
       </button>
 
       <!-- User Login / Profile Button -->
