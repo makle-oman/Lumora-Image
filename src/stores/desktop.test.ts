@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { invoke, open, relaunch } = vi.hoisted(() => ({
+const { invoke, isTauriMock, open, relaunch } = vi.hoisted(() => ({
   invoke: vi.fn(),
+  isTauriMock: vi.fn(),
   open: vi.fn(),
   relaunch: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke, isTauri: () => true }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke, isTauri: isTauriMock }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }))
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch }))
 
@@ -17,6 +18,17 @@ describe('desktop store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    isTauriMock.mockReturnValue(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('detects the explicit desktop window marker', () => {
+    isTauriMock.mockReturnValue(false)
+    vi.stubGlobal('location', { search: '?lumora-desktop=1' })
+
+    const store = useDesktopStore()
+
+    expect(store.available).toBe(true)
   })
 
   it('loads the active image directory', async () => {

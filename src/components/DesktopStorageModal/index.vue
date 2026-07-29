@@ -38,6 +38,11 @@ const desktopStore = useDesktopStore()
             <FolderOpen :size="17" />
             <span>{{ desktopStore.isSelecting ? '正在切换...' : '选择文件夹' }}</span>
           </button>
+
+          <div class="version-info">
+            <span>lumora image</span>
+            <span>v{{ desktopStore.version }}</span>
+          </div>
         </section>
       </div>
     </Transition>
@@ -142,6 +147,26 @@ const desktopStore = useDesktopStore()
 .close-button:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.version-info {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  margin-top: 22px;
+  color: #71717a;
+  font-size: 12px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.version-info span:last-child {
+  padding: 3px 8px;
+  color: #3f3f46;
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
 }
 
 .fade-enter-active,

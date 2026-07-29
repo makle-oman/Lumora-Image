@@ -195,7 +195,7 @@ fn main() {
             WebviewWindowBuilder::new(
                 app,
                 "main",
-                WebviewUrl::External("http://127.0.0.1:8787".parse()?),
+                WebviewUrl::External("http://127.0.0.1:8787/?lumora-desktop=1".parse()?),
             )
             .title("lumora image")
             .inner_size(1380.0, 900.0)
@@ -204,8 +204,21 @@ fn main() {
             .build()?;
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("failed to build Lumora desktop app");
+        .build(tauri::generate_context!());
+
+    let app = match app {
+        Ok(app) => app,
+        Err(error) => {
+            rfd::MessageDialog::new()
+                .set_title("lumora image")
+                .set_description(format!(
+                    "Lumora image 启动失败：\n\n{error}\n\n本应用无需管理员权限，请检查是否已重复打开或被安全软件拦截。"
+                ))
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            return;
+        }
+    };
 
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::ExitRequested { .. }) {

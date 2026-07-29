@@ -14,10 +14,12 @@ import {
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import PromptComposer from '../../components/PromptComposer/index.vue'
+import { useDesktopStore } from '../../stores/desktop'
 import { useGenerationStore } from '../../stores/generation'
 import type { GeneratedImage } from '../../types/generation'
 
 const route = useRoute()
+const desktopStore = useDesktopStore()
 const generationStore = useGenerationStore()
 const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 
@@ -271,6 +273,7 @@ function useSamplePrompt(p: string): void {
           </label>
 
           <a
+            v-if="!desktopStore.available"
             class="action-pill-btn save-btn"
             :href="img.url"
             :download="`lumora-${img.id}.png`"
@@ -342,7 +345,7 @@ function useSamplePrompt(p: string): void {
               class="pure-lightbox-img"
             />
 
-            <div class="lightbox-bottom-bar">
+            <div v-if="!desktopStore.available" class="lightbox-bottom-bar">
               <a
                 class="lightbox-download-btn"
                 :href="selectedPureImage.url"

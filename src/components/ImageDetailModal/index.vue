@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Check, Copy, Download, Sparkles, X } from 'lucide-vue-next'
+import { useDesktopStore } from '../../stores/desktop'
 
 export interface DetailImageItem {
   id: string
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   reuse: [prompt: string]
 }>()
 
+const desktopStore = useDesktopStore()
 const isCopied = ref(false)
 
 async function copyPrompt(): Promise<void> {
@@ -102,6 +104,7 @@ function formatDate(dateStr?: string): string {
             <!-- Modal Action Buttons Row -->
             <div class="modal-actions-row">
               <a
+                v-if="!desktopStore.available"
                 class="save-action-btn"
                 :href="item.url"
                 :download="`lumora-${item.id}.png`"

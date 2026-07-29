@@ -5,7 +5,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useDesktopStore = defineStore('desktop', () => {
-  const available = isTauri()
+  const available = isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1'
+  const version = __APP_VERSION__
   const imageDirectory = ref('')
   const isStorageModalOpen = ref(false)
   const error = ref('')
@@ -60,6 +61,7 @@ export const useDesktopStore = defineStore('desktop', () => {
 
   return {
     available,
+    version,
     imageDirectory,
     isStorageModalOpen,
     error,

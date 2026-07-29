@@ -164,10 +164,7 @@ function submit(): void {
   prompt.value = ''
 }
 
-function selectReferenceImages(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
+function addReferenceImages(files: File[]): void {
   const available = 4 - references.value.length
   const valid = files
     .filter(file => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) && file.size <= 50 * 1024 * 1024)
@@ -178,6 +175,23 @@ function selectReferenceImages(event: Event): void {
     file,
     url: URL.createObjectURL(file),
   })))
+}
+
+function selectReferenceImages(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  addReferenceImages(files)
+}
+
+function pasteReferenceImages(event: ClipboardEvent): void {
+  const files = Array.from(event.clipboardData?.items ?? [])
+    .filter(item => item.kind === 'file')
+    .map(item => item.getAsFile())
+    .filter((file): file is File => file !== null)
+  if (!files.length) return
+  event.preventDefault()
+  addReferenceImages(files)
 }
 
 function removeReference(id: string): void {
@@ -219,7 +233,7 @@ function stopPromptResize(event: PointerEvent): void {
 </script>
 
 <template>
-  <form class="composer" :class="{ 'has-batch': showBatchEdit }" @submit.prevent="submit">
+  <form class="composer" :class="{ 'has-batch': showBatchEdit }" @paste="pasteReferenceImages" @submit.prevent="submit">
     <Teleport to="body">
       <Transition name="message-fade">
         <div v-if="messageText" class="system-message" role="alert">
