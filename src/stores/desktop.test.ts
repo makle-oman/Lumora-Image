@@ -36,9 +36,16 @@ describe('desktop store', () => {
     invoke.mockResolvedValue(null)
     relaunch.mockResolvedValue(undefined)
     const store = useDesktopStore()
+    store.imageDirectory = 'C:\\Pictures\\Lumora'
 
     await store.chooseImageDirectory()
 
+    expect(open).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      title: '选择图片存放位置',
+      defaultPath: 'C:\\Pictures\\Lumora',
+    })
     expect(invoke).toHaveBeenCalledWith('set_image_directory', { path: 'D:\\Lumora' })
     expect(relaunch).toHaveBeenCalledOnce()
   })

@@ -197,7 +197,7 @@ fn main() {
                 "main",
                 WebviewUrl::External("http://127.0.0.1:8787".parse()?),
             )
-            .title("Lumora Image Studio")
+            .title("lumora image")
             .inner_size(1380.0, 900.0)
             .min_inner_size(1000.0, 700.0)
             .center()

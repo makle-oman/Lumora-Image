@@ -17,10 +17,13 @@ const { isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 const { items, stats, loading } = storeToRefs(galleryStore)
 const prompt = ref('')
 const isScrolled = ref(false)
+const homeView = ref<HTMLElement | null>(null)
+const primaryComposer = ref<HTMLElement | null>(null)
 
-function handleScroll(e: Event): void {
-  const target = e.target as HTMLElement
-  isScrolled.value = target.scrollTop > 240
+function handleScroll(): void {
+  if (!homeView.value || !primaryComposer.value) return
+  isScrolled.value = primaryComposer.value.getBoundingClientRect().bottom
+    <= homeView.value.getBoundingClientRect().top
 }
 
 async function generate(request: GenerateImageRequest): Promise<void> {
@@ -36,18 +39,20 @@ onMounted(() => void galleryStore.search('', '全部', false))
 </script>
 
 <template>
-  <section class="home-view" @scroll="handleScroll">
+  <section ref="homeView" class="home-view" @scroll="handleScroll">
     <div class="home-hero">
       <h1>用想象力 <em>创造</em> 世界</h1>
       <p class="subtitle">用 GPT-IMAGE-2 将你的创意变为精美图片，只需描述你脑海中的画面。</p>
 
-      <PromptComposer
-        v-model="prompt"
-        :loading="isLoading"
-        :api-status="apiStatus"
-        :error-message="errorMessage"
-        @generate="generate"
-      />
+      <div ref="primaryComposer">
+        <PromptComposer
+          v-model="prompt"
+          :loading="isLoading"
+          :api-status="apiStatus"
+          :error-message="errorMessage"
+          @generate="generate"
+        />
+      </div>
 
       <div class="generation-count" :aria-label="`今日已生成 ${stats.todayGenerations} 张图片`">
         <span class="stars">★★★★★</span>

@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-desktop-settings"
+description = "Allows the Lumora desktop window to read and change the local image directory."
+commands.allow = [
+  "image_directory",
+  "take_migration_error",
+  "set_image_directory",
+]

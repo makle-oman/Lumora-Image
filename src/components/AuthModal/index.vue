@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { CheckCircle2, Lock, Mail, Sparkles, X } from 'lucide-vue-next'
+import { CheckCircle2, Eye, EyeOff, Lock, Mail, Sparkles, X } from 'lucide-vue-next'
 import { useGenerationStore } from '../../stores/generation'
 import { useUserStore } from '../../stores/user'
 
@@ -9,6 +9,7 @@ const generationStore = useGenerationStore()
 const mode = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const isSuccess = ref(false)
 const isSubmitting = ref(false)
 
@@ -73,6 +74,16 @@ async function handleSubmit(): Promise<void> {
                   placeholder="your.name@domain.com"
                   required
                 />
+                <button
+                  v-if="email"
+                  class="field-action"
+                  type="button"
+                  aria-label="清空邮箱"
+                  title="清空邮箱"
+                  @click="email = ''"
+                >
+                  <X :size="16" />
+                </button>
               </div>
             </div>
 
@@ -83,10 +94,20 @@ async function handleSubmit(): Promise<void> {
                 <input
                   id="auth-password"
                   v-model="password"
-                  type="password"
+                  :type="showPassword ? 'text' : 'password'"
                   placeholder="••••••••"
                   required
                 />
+                <button
+                  class="field-action"
+                  type="button"
+                  :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                  :title="showPassword ? '隐藏密码' : '显示密码'"
+                  @click="showPassword = !showPassword"
+                >
+                  <EyeOff v-if="showPassword" :size="17" />
+                  <Eye v-else :size="17" />
+                </button>
               </div>
             </div>
 
@@ -218,13 +239,38 @@ async function handleSubmit(): Promise<void> {
 }
 
 .input-wrap input {
-  width: 100%;
+  width: auto;
   height: 44px;
+  min-width: 0;
+  flex: 1;
   color: #1a1a1a;
   font-size: 14px;
   background: transparent;
   border: 0;
   outline: none;
+}
+
+.input-wrap > svg,
+.field-action {
+  flex: 0 0 auto;
+}
+
+.field-action {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  color: #71717a;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.field-action:hover {
+  color: #18181b;
+  background: #f4f4f5;
 }
 
 .submit-btn {

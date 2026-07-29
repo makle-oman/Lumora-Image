@@ -42,6 +42,7 @@ export const useDesktopStore = defineStore('desktop', () => {
       directory: true,
       multiple: false,
       title: '选择图片存放位置',
+      defaultPath: imageDirectory.value || undefined,
     })
     if (!selected || Array.isArray(selected)) return
 
