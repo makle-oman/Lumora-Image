@@ -18,7 +18,7 @@ jobs:
       - name: Checkout backend
         uses: actions/checkout@v4
         with:
-          repository: makle-oman/lumora-image-studio-backend
+          repository: MYM-Makle/lumora-image-studio-backend
           path: lumora-image-studio-backend
 
       - name: Setup pnpm

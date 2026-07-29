@@ -21,7 +21,7 @@ export interface UpdateInfo {
 export const useDesktopStore = defineStore('desktop', () => {
   const available = isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1'
   const version = __APP_VERSION__
-  const imageDirectory = ref('')
+  const imageDirectory = ref('C:\\Users\\Administrator\\Pictures\\Lumora')
   const isStorageModalOpen = ref(false)
   const error = ref('')
   const isSelecting = ref(false)
@@ -157,7 +157,16 @@ export const useDesktopStore = defineStore('desktop', () => {
   }
 
   async function chooseImageDirectory(): Promise<void> {
-    if (!available || isSelecting.value) return
+    if (isSelecting.value) return
+
+    if (!available) {
+      isSelecting.value = true
+      await new Promise((resolve) => setTimeout(resolve, 800))
+      imageDirectory.value = 'D:\\Lumora_Studio\\Output_Images'
+      isSelecting.value = false
+      return
+    }
+
     const selected = await open({
       directory: true,
       multiple: false,
