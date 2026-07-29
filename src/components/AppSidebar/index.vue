@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Headphones,
   Images,
+  Info,
   LogOut,
   Menu,
   Sparkles,
@@ -96,26 +97,31 @@ onUnmounted(() => {
 
     <nav class="nav-list">
       <RouterLink class="nav-item" to="/">
-        <Compass :size="21" :stroke-width="1.8" />
-        <span>发现</span>
+        <Compass class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">发现</span>
       </RouterLink>
       <RouterLink class="nav-item" to="/create">
-        <Brush :size="21" :stroke-width="1.8" />
-        <span>生图</span>
+        <Brush class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">生图</span>
       </RouterLink>
       <RouterLink class="nav-item" to="/gallery">
-        <Images :size="21" :stroke-width="1.8" />
-        <span>画廊</span>
+        <Images class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">画廊</span>
       </RouterLink>
 
       <RouterLink class="nav-item mobile-only" to="/api">
-        <TerminalSquare :size="21" :stroke-width="1.8" />
-        <span>API</span>
+        <TerminalSquare class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">API</span>
+      </RouterLink>
+
+      <RouterLink class="nav-item mobile-only" to="/about">
+        <Info class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">关于</span>
       </RouterLink>
 
       <button class="nav-item mobile-more" type="button" aria-label="更多">
-        <Menu :size="21" :stroke-width="1.8" />
-        <span>更多</span>
+        <Menu class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">更多</span>
       </button>
     </nav>
 
@@ -126,8 +132,8 @@ onUnmounted(() => {
         :class="`is-${apiStatus}`"
         title="开发者 API 中心"
       >
-        <TerminalSquare :size="19" :stroke-width="1.7" />
-        <span>API</span>
+        <TerminalSquare class="nav-icon" :size="19" :stroke-width="1.7" />
+        <span class="nav-label">API</span>
       </RouterLink>
 
       <button
@@ -136,8 +142,8 @@ onUnmounted(() => {
         title="系统公告"
         @click="userStore.toggleNoticeModal(true)"
       >
-        <Bell :size="19" :stroke-width="1.7" />
-        <span class="notice-wrap">
+        <Bell class="nav-icon" :size="19" :stroke-width="1.7" />
+        <span class="notice-wrap nav-label">
           公告
           <span v-if="userStore.hasUnreadAnnouncements" class="unread-dot" />
         </span>
@@ -150,9 +156,18 @@ onUnmounted(() => {
         title="图片存放位置"
         @click="handleStorageSettings"
       >
-        <FolderOpen :size="19" :stroke-width="1.7" />
-        <span>存放</span>
+        <FolderOpen class="nav-icon" :size="19" :stroke-width="1.7" />
+        <span class="nav-label">存放</span>
       </button>
+
+      <RouterLink
+        class="utility-item"
+        to="/about"
+        title="关于 Lumora"
+      >
+        <Info class="nav-icon" :size="19" :stroke-width="1.7" />
+        <span class="nav-label">关于</span>
+      </RouterLink>
 
       <!-- User Login / Profile Button -->
       <div class="user-menu-wrapper">
@@ -168,8 +183,8 @@ onUnmounted(() => {
             :src="userAvatarUrl"
             :alt="userStore.user.name"
           />
-          <CircleUserRound v-else :size="20" :stroke-width="1.7" />
-          <span>{{ userStore.isLoggedIn ? '我的' : '登录' }}</span>
+          <CircleUserRound v-else class="nav-icon" :size="20" :stroke-width="1.7" />
+          <span class="nav-label">{{ userStore.isLoggedIn ? '我的' : '登录' }}</span>
         </button>
 
         <!-- Logged-in Profile Dropdown Popover -->
@@ -200,7 +215,6 @@ onUnmounted(() => {
             </div>
 
             <div class="popover-actions">
-
               <button v-if="hasSupport" class="action-item" type="button" @click="handleContactAdmin">
                 <Headphones :size="15" />
                 <span>联系管理员</span>
@@ -265,23 +279,31 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   padding: 16px 10px 12px;
-  color: #555555;
-  background: rgb(255 255 255 / 45%);
-  border: 1px solid rgb(0 0 0 / 10%);
-  border-radius: 16px;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 5%);
-  backdrop-filter: blur(16px);
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .brand {
   display: grid;
   height: 44px;
   place-items: center;
-  color: #1a1a1a;
+  color: #0f172a;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 18px;
   font-style: italic;
   text-decoration: none;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.brand:hover {
+  transform: scale(1.08);
 }
 
 .brand sup {
@@ -296,7 +318,7 @@ onUnmounted(() => {
 .utility-list {
   display: grid;
   width: 100%;
-  gap: 6px;
+  gap: 8px;
 }
 
 .nav-list {
@@ -307,46 +329,99 @@ onUnmounted(() => {
   margin-top: auto;
 }
 
+/* Nav Item Base Styling */
 .nav-item,
 .utility-item {
   position: relative;
   display: grid;
   width: 50px;
-  min-height: 65px;
+  min-height: 62px;
   place-items: center;
   align-content: center;
   gap: 5px;
   padding: 0;
-  color: #666666;
-  font-size: 12px;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 12px;
-  transition: color 180ms ease, background-color 180ms ease;
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.nav-icon {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease, filter 0.25s ease;
+}
+
+.nav-label {
+  transition: color 0.25s ease, text-shadow 0.25s ease, font-weight 0.25s ease;
+}
+
+/* Hover State */
 .nav-item:hover,
+.utility-item:hover {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.nav-item:hover .nav-icon,
+.utility-item:hover .nav-icon {
+  transform: scale(1.08);
+  color: #1e293b;
+}
+
+/* Active State Styles - Both Top & Bottom Nav Options get identical Pill & Glow */
 .nav-item.router-link-exact-active,
 .nav-item.router-link-active,
-.utility-item:hover,
+.utility-item.router-link-exact-active,
 .utility-item.router-link-active,
 .utility-item.is-active {
-  color: #1a1a1a;
-  background: rgb(255 255 255 / 65%);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.08);
 }
 
-.nav-item.router-link-active,
-.utility-item.router-link-active {
-  font-weight: 650;
+/* Neon Text Glow */
+.nav-item.router-link-exact-active .nav-label,
+.nav-item.router-link-active .nav-label,
+.utility-item.router-link-exact-active .nav-label,
+.utility-item.router-link-active .nav-label,
+.utility-item.is-active .nav-label {
+  color: #8b5cf6;
+  font-weight: 700;
+  text-shadow: 
+    0 0 4px rgba(139, 92, 246, 0.9),
+    0 0 10px rgba(139, 92, 246, 0.6),
+    0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+/* Neon Icon Drop-Shadow Glow */
+.nav-item.router-link-exact-active .nav-icon,
+.nav-item.router-link-active .nav-icon,
+.utility-item.router-link-exact-active .nav-icon,
+.utility-item.router-link-active .nav-icon,
+.utility-item.is-active .nav-icon {
+  color: #8b5cf6;
+  transform: scale(1.14);
+  filter: 
+    drop-shadow(0 0 6px rgba(139, 92, 246, 0.8)) 
+    drop-shadow(0 0 14px rgba(139, 92, 246, 0.5));
 }
 
 .user-avatar {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   object-fit: cover;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.utility-item.is-active .user-avatar {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8));
 }
 
 .notice-wrap {
@@ -363,6 +438,7 @@ onUnmounted(() => {
   height: 6px;
   background: #ef4444;
   border-radius: 50%;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.9);
 }
 
 .user-menu-wrapper {
@@ -375,9 +451,10 @@ onUnmounted(() => {
   left: 64px;
   width: 240px;
   padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
 }
 
@@ -636,7 +713,7 @@ onUnmounted(() => {
 
   .nav-list {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0;
     height: 100%;
     margin: 0;

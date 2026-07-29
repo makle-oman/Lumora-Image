@@ -26,6 +26,11 @@ const router = createRouter({
       name: 'api',
       component: () => import('../views/api/index.vue'),
     },
+    {
+      path: '/about',
+      name: 'about',
+      component: () => import('../views/about/index.vue'),
+    },
   ],
 })
 
