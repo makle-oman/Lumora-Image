@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import {
   CheckCircle2,
+  CircleAlert,
   Cpu,
   Heart,
   Layers,
@@ -23,22 +24,25 @@ const userStore = useUserStore()
 const desktopStore = useDesktopStore()
 
 // Version & Environment Info
-const appVersion = computed(() => desktopStore.version || '1.0.6')
+const appVersion = computed(() => desktopStore.version || '1.0.7')
 const platformType = computed(() => desktopStore.available ? 'Desktop App (Tauri)' : 'Web Application')
 
 // Update Checking State
-const isCheckingUpdate = ref(false)
-const updateStatus = ref<'idle' | 'success'>('idle')
+const isCheckingUpdate = computed(() => desktopStore.isCheckingUpdate)
+const updateStatus = ref<'idle' | 'success' | 'error'>('idle')
+const updateMessage = ref('')
 
-async function checkUpdate() {
+async function checkUpdate(): Promise<void> {
   if (isCheckingUpdate.value) return
-  isCheckingUpdate.value = true
   updateStatus.value = 'idle'
-  
-  await new Promise((resolve) => setTimeout(resolve, 1400))
-  
-  isCheckingUpdate.value = false
-  updateStatus.value = 'success'
+  updateMessage.value = ''
+  const hasUpdate = await desktopStore.checkForUpdates()
+  if (hasUpdate) return
+
+  updateStatus.value = desktopStore.updateError ? 'error' : 'success'
+  updateMessage.value = desktopStore.updateError
+    ? `检查更新失败：${desktopStore.updateError}`
+    : '当前已是最新稳定版本！'
 }
 
 // Sponsor Modal & Zoom States
@@ -75,9 +79,11 @@ const isQrZoomed = ref(false)
           </div>
 
           <button 
+            v-if="desktopStore.available"
             class="update-btn" 
             :class="{ 'is-loading': isCheckingUpdate }"
             type="button" 
+            :disabled="isCheckingUpdate"
             @click="checkUpdate"
           >
             <RefreshCw :size="14" :class="{ 'spin': isCheckingUpdate }" />
@@ -86,9 +92,10 @@ const isQrZoomed = ref(false)
         </div>
 
         <Transition name="fade">
-          <div v-if="updateStatus === 'success'" class="update-toast">
-            <CheckCircle2 :size="15" class="icon-green" />
-            <span>当前已是最新稳定版本！</span>
+          <div v-if="updateStatus !== 'idle'" class="update-toast" :class="{ error: updateStatus === 'error' }">
+            <CircleAlert v-if="updateStatus === 'error'" :size="15" />
+            <CheckCircle2 v-else :size="15" class="icon-green" />
+            <span>{{ updateMessage }}</span>
           </div>
         </Transition>
       </section>
@@ -446,6 +453,10 @@ const isQrZoomed = ref(false)
   font-size: 12.5px;
   font-weight: 600;
   color: #10b981;
+}
+
+.update-toast.error {
+  color: #dc2626;
 }
 
 /* Bento Grid */

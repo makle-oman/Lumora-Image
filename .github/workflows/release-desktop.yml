@@ -1,0 +1,59 @@
+name: Publish desktop
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout desktop
+        uses: actions/checkout@v4
+        with:
+          path: lumora-image-studio
+
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: makle-oman/lumora-image-studio-backend
+          path: lumora-image-studio-backend
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19
+          cache: pnpm
+          cache-dependency-path: lumora-image-studio/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: lumora-image-studio
+
+      - name: Prepare desktop bundle
+        run: pnpm desktop:prepare
+        working-directory: lumora-image-studio
+
+      - name: Build and create draft release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          projectPath: lumora-image-studio
+          tagName: v__VERSION__
+          releaseName: Lumora Image v__VERSION__
+          generateReleaseNotes: true
+          releaseDraft: true
+          prerelease: false
+          updaterJsonPreferNsis: true

@@ -31,3 +31,4 @@ if (userStore.isLoggedIn) {
 }
 
 app.mount('#app')
+void desktopStore.checkForUpdates()

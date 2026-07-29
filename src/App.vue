@@ -5,6 +5,7 @@ import AuthModal from './components/AuthModal/index.vue'
 import DesktopStorageModal from './components/DesktopStorageModal/index.vue'
 import NoticeModal from './components/NoticeModal/index.vue'
 import ProfileModal from './components/ProfileModal/index.vue'
+import UpdateModal from './components/UpdateModal/index.vue'
 </script>
 
 <template>
@@ -24,6 +25,7 @@ import ProfileModal from './components/ProfileModal/index.vue'
     <AuthModal />
     <ProfileModal />
     <DesktopStorageModal />
+    <UpdateModal />
   </div>
 </template>
 
