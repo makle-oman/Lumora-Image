@@ -127,7 +127,7 @@ export const useDesktopStore = defineStore('desktop', () => {
 
     // Complete update & auto relaunch if Tauri environment
     try {
-      await update.downloadAndInstall((event) => {
+      await update.download((event) => {
         if (event.event === 'Started') {
           totalBytes = event.data.contentLength || 0
           if (totalBytes > 0) {
@@ -148,6 +148,8 @@ export const useDesktopStore = defineStore('desktop', () => {
         }
         downloadProgress.value = 100
       })
+      await invoke('stop_desktop_sidecar')
+      await update.install()
       await relaunch()
     }
     catch (cause) {

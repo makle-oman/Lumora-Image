@@ -4,18 +4,26 @@ use std::{
     fs, io,
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{mpsc, Mutex},
     thread,
     time::Duration,
 };
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
+
+struct SidecarProcess {
+    child: CommandChild,
+    terminated: mpsc::Receiver<()>,
+}
 
 struct DesktopState {
     app_data_directory: PathBuf,
     image_directory: Mutex<PathBuf>,
-    sidecar: Mutex<Option<CommandChild>>,
+    sidecar: Mutex<Option<SidecarProcess>>,
 }
 
 fn read_directory_setting(path: &Path) -> io::Result<Option<PathBuf>> {
@@ -85,6 +93,28 @@ fn set_image_directory(path: String, state: tauri::State<'_, DesktopState>) -> R
     .map_err(|error| error.to_string())
 }
 
+fn stop_sidecar(state: &DesktopState) -> Result<(), String> {
+    let sidecar = state
+        .sidecar
+        .lock()
+        .map_err(|_| "后端进程状态异常".to_string())?
+        .take();
+    let Some(sidecar) = sidecar else {
+        return Ok(());
+    };
+
+    sidecar.child.kill().map_err(|error| error.to_string())?;
+    sidecar
+        .terminated
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|_| "等待后端进程退出超时".to_string())
+}
+
+#[tauri::command]
+fn stop_desktop_sidecar(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    stop_sidecar(&state)
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -94,7 +124,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             image_directory,
             take_migration_error,
-            set_image_directory
+            set_image_directory,
+            stop_desktop_sidecar
         ])
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir()?;
@@ -168,11 +199,20 @@ fn main() {
                 "--desktop-master-key-file".to_string(),
                 master_key.to_string_lossy().into_owned(),
             ];
-            let (_events, child) = app
+            let (mut events, child) = app
                 .shell()
                 .sidecar("lumora-server")?
                 .args(arguments)
                 .spawn()?;
+            let (terminated_sender, terminated) = mpsc::channel();
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = events.recv().await {
+                    if matches!(event, CommandEvent::Terminated(_)) {
+                        let _ = terminated_sender.send(());
+                        break;
+                    }
+                }
+            });
 
             let mut server_ready = false;
             for _ in 0..100 {
@@ -190,7 +230,7 @@ fn main() {
             app.manage(DesktopState {
                 app_data_directory,
                 image_directory: Mutex::new(selected_image_directory),
-                sidecar: Mutex::new(Some(child)),
+                sidecar: Mutex::new(Some(SidecarProcess { child, terminated })),
             });
 
             WebviewWindowBuilder::new(
@@ -224,9 +264,7 @@ fn main() {
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
             if let Some(state) = app_handle.try_state::<DesktopState>() {
-                if let Some(child) = state.sidecar.lock().expect("sidecar lock poisoned").take() {
-                    let _ = child.kill();
-                }
+                let _ = stop_sidecar(&state);
             }
         }
     });

@@ -5,4 +5,5 @@ commands.allow = [
   "image_directory",
   "take_migration_error",
   "set_image_directory",
+  "stop_desktop_sidecar",
 ]

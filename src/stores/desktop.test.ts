@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { checkForUpdate, downloadAndInstall, invoke, isTauriMock, open, relaunch } = vi.hoisted(() => ({
+const { checkForUpdate, download, install, invoke, isTauriMock, open, relaunch } = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
-  downloadAndInstall: vi.fn(),
+  download: vi.fn(),
+  install: vi.fn(),
   invoke: vi.fn(),
   isTauriMock: vi.fn(),
   open: vi.fn(),
@@ -70,7 +71,8 @@ describe('desktop store', () => {
       version: '1.0.7',
       date: '2026-07-29T10:00:00Z',
       body: '- 修复桌面更新流程',
-      downloadAndInstall,
+      download,
+      install,
     })
     const store = useDesktopStore()
 
@@ -82,7 +84,7 @@ describe('desktop store', () => {
   })
 
   it('downloads, installs, and relaunches an update', async () => {
-    downloadAndInstall.mockImplementation(async (onEvent: (event: unknown) => void) => {
+    download.mockImplementation(async (onEvent: (event: unknown) => void) => {
       onEvent({ event: 'Started', data: { contentLength: 100 } })
       onEvent({ event: 'Progress', data: { chunkLength: 50 } })
       onEvent({ event: 'Finished' })
@@ -91,7 +93,8 @@ describe('desktop store', () => {
       version: '1.0.7',
       date: '2026-07-29T10:00:00Z',
       body: '',
-      downloadAndInstall,
+      download,
+      install,
     })
     relaunch.mockResolvedValue(undefined)
     const store = useDesktopStore()
@@ -100,7 +103,9 @@ describe('desktop store', () => {
     await store.startUpdateDownload()
 
     expect(store.downloadProgress).toBe(100)
-    expect(downloadAndInstall).toHaveBeenCalledOnce()
+    expect(download).toHaveBeenCalledOnce()
+    expect(invoke).toHaveBeenCalledWith('stop_desktop_sidecar')
+    expect(install).toHaveBeenCalledOnce()
     expect(relaunch).toHaveBeenCalledOnce()
   })
 })
