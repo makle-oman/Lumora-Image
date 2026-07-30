@@ -2,28 +2,22 @@
 
 use std::{
     fs, io,
-    net::{SocketAddr, TcpStream},
+    net::IpAddr,
     path::{Path, PathBuf},
-    sync::{mpsc, Mutex},
-    thread,
-    time::Duration,
+    sync::Mutex,
 };
 
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_shell::{
-    process::{CommandChild, CommandEvent},
-    ShellExt,
+use tauri::{
+    http,
+    ipc::{InvokeBody, Request},
+    Manager, Url, WebviewUrl, WebviewWindowBuilder,
 };
 
-struct SidecarProcess {
-    child: CommandChild,
-    terminated: mpsc::Receiver<()>,
-}
+const DEFAULT_APP_URL: &str = "https://makle.cloud";
 
 struct DesktopState {
     app_data_directory: PathBuf,
     image_directory: Mutex<PathBuf>,
-    sidecar: Mutex<Option<SidecarProcess>>,
 }
 
 fn read_directory_setting(path: &Path) -> io::Result<Option<PathBuf>> {
@@ -47,6 +41,21 @@ fn copy_images(source: &Path, destination: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn image_file_name(id: &str, format: &str) -> Result<String, String> {
+    let suffix = id
+        .strip_prefix("img-")
+        .filter(|value| value.len() == 32 && value.chars().all(|char| char.is_ascii_hexdigit()))
+        .ok_or_else(|| "图片 ID 无效".to_string())?;
+    if suffix.is_empty() || !matches!(format, "png" | "jpeg" | "webp") {
+        return Err("图片格式无效".into());
+    }
+    Ok(format!("{id}.{format}"))
+}
+
+fn local_image_url(file_name: &str) -> String {
+    format!("https://lumora-local.localhost/{file_name}")
 }
 
 #[tauri::command]
@@ -93,44 +102,147 @@ fn set_image_directory(path: String, state: tauri::State<'_, DesktopState>) -> R
     .map_err(|error| error.to_string())
 }
 
-fn stop_sidecar(state: &DesktopState) -> Result<(), String> {
-    let sidecar = state
-        .sidecar
-        .lock()
-        .map_err(|_| "后端进程状态异常".to_string())?
-        .take();
-    let Some(sidecar) = sidecar else {
-        return Ok(());
+#[tauri::command]
+fn save_local_image(
+    request: Request<'_>,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<String, String> {
+    let id = request
+        .headers()
+        .get("x-lumora-image-id")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "图片 ID 缺失".to_string())?;
+    let format = request
+        .headers()
+        .get("x-lumora-image-format")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "图片格式缺失".to_string())?;
+    let bytes = match request.body() {
+        InvokeBody::Raw(bytes) if !bytes.is_empty() && bytes.len() <= 50 * 1024 * 1024 => bytes,
+        _ => return Err("图片数据无效".into()),
     };
-
-    sidecar.child.kill().map_err(|error| error.to_string())?;
-    sidecar
-        .terminated
-        .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| "等待后端进程退出超时".to_string())
+    let file_name = image_file_name(id, format)?;
+    let directory = state
+        .image_directory
+        .lock()
+        .map_err(|_| "图片目录状态异常".to_string())?;
+    let target = directory.join(&file_name);
+    if !target.exists() {
+        let temporary = directory.join(format!(".saving-{file_name}-{}", std::process::id()));
+        fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
+        if let Err(error) = fs::rename(&temporary, &target) {
+            let _ = fs::remove_file(temporary);
+            return Err(error.to_string());
+        }
+    }
+    Ok(local_image_url(&file_name))
 }
 
 #[tauri::command]
-fn stop_desktop_sidecar(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
-    stop_sidecar(&state)
+fn delete_local_image(
+    id: String,
+    format: String,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<(), String> {
+    let file_name = image_file_name(&id, &format)?;
+    let directory = state
+        .image_directory
+        .lock()
+        .map_err(|_| "图片目录状态异常".to_string())?;
+    match fs::remove_file(directory.join(file_name)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn configured_app_url() -> Result<Url, Box<dyn std::error::Error>> {
+    let mut url = Url::parse(option_env!("LUMORA_APP_URL").unwrap_or(DEFAULT_APP_URL))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "集中服务地址缺少域名"))?;
+    let loopback = host == "localhost"
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "集中服务必须使用 HTTPS，本机联调可使用 localhost",
+        )
+        .into());
+    }
+    if !url
+        .query_pairs()
+        .any(|(name, value)| name == "lumora-desktop" && value == "1")
+    {
+        url.query_pairs_mut().append_pair("lumora-desktop", "1");
+    }
+    Ok(url)
+}
+
+fn same_origin(left: &Url, right: &Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host_str() == right.host_str()
+        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             image_directory,
             take_migration_error,
             set_image_directory,
-            stop_desktop_sidecar
+            save_local_image,
+            delete_local_image
         ])
+        .register_uri_scheme_protocol("lumora-local", |context, request| {
+            let file_name = request.uri().path().trim_start_matches('/');
+            let valid = file_name
+                .rsplit_once('.')
+                .and_then(|(id, format)| image_file_name(id, format).ok())
+                .is_some_and(|expected| expected == file_name);
+            let result = if valid {
+                let state = context.app_handle().state::<DesktopState>();
+                state
+                    .image_directory
+                    .lock()
+                    .ok()
+                    .and_then(|directory| fs::read(directory.join(file_name)).ok())
+            } else {
+                None
+            };
+            let (status, content_type, body) = match result {
+                Some(bytes) => {
+                    let content_type = if file_name.ends_with(".png") {
+                        "image/png"
+                    } else if file_name.ends_with(".webp") {
+                        "image/webp"
+                    } else {
+                        "image/jpeg"
+                    };
+                    (http::StatusCode::OK, content_type, bytes)
+                }
+                None => (
+                    http::StatusCode::NOT_FOUND,
+                    "text/plain; charset=utf-8",
+                    b"image not found".to_vec(),
+                ),
+            };
+            http::Response::builder()
+                .status(status)
+                .header(http::header::CONTENT_TYPE, content_type)
+                .header(http::header::CACHE_CONTROL, "private, no-store")
+                .header(http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(body)
+                .expect("valid local image response")
+        })
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir()?;
             fs::create_dir_all(&app_data_directory)?;
-
             let image_setting = app_data_directory.join("image-directory.txt");
             let pending_setting = app_data_directory.join("pending-image-directory.txt");
             let migration_error = app_data_directory.join("image-directory-error.txt");
@@ -141,7 +253,6 @@ fn main() {
                 .join("Lumora");
             let mut selected_image_directory =
                 read_directory_setting(&image_setting)?.unwrap_or(default_image_directory);
-
             if let Some(pending_directory) = read_directory_setting(&pending_setting)? {
                 match copy_images(&selected_image_directory, &pending_directory) {
                     Ok(()) => {
@@ -152,13 +263,10 @@ fn main() {
                         )?;
                         let _ = fs::remove_file(&migration_error);
                     }
-                    Err(error) => {
-                        fs::write(&migration_error, error.to_string())?;
-                    }
+                    Err(error) => fs::write(&migration_error, error.to_string())?,
                 }
                 fs::remove_file(&pending_setting)?;
             }
-
             fs::create_dir_all(&selected_image_directory)?;
             if !image_setting.exists() {
                 fs::write(
@@ -166,106 +274,33 @@ fn main() {
                     selected_image_directory.to_string_lossy().as_bytes(),
                 )?;
             }
-
-            let master_key = app_data_directory.join("desktop.key");
-            if !master_key.exists() {
-                fs::write(&master_key, rand::random::<[u8; 32]>())?;
-            }
-
-            let static_directory = if cfg!(debug_assertions) {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist")
-            } else {
-                app.path().resource_dir()?.join("web")
-            };
-            let task_directory = app_data_directory.join("tasks");
-            fs::create_dir_all(&task_directory)?;
-
-            let server_address = SocketAddr::from(([127, 0, 0, 1], 8787));
-            if TcpStream::connect_timeout(&server_address, Duration::from_millis(150)).is_ok() {
-                return Err(
-                    io::Error::new(io::ErrorKind::AddrInUse, "本机端口 8787 已被占用").into(),
-                );
-            }
-
-            let arguments = vec![
-                "--desktop-data".to_string(),
-                app_data_directory.to_string_lossy().into_owned(),
-                "--desktop-images".to_string(),
-                selected_image_directory.to_string_lossy().into_owned(),
-                "--desktop-tasks".to_string(),
-                task_directory.to_string_lossy().into_owned(),
-                "--desktop-static".to_string(),
-                static_directory.to_string_lossy().into_owned(),
-                "--desktop-master-key-file".to_string(),
-                master_key.to_string_lossy().into_owned(),
-            ];
-            let (mut events, child) = app
-                .shell()
-                .sidecar("lumora-server")?
-                .args(arguments)
-                .spawn()?;
-            let (terminated_sender, terminated) = mpsc::channel();
-            tauri::async_runtime::spawn(async move {
-                while let Some(event) = events.recv().await {
-                    if matches!(event, CommandEvent::Terminated(_)) {
-                        let _ = terminated_sender.send(());
-                        break;
-                    }
-                }
-            });
-
-            let mut server_ready = false;
-            for _ in 0..100 {
-                if TcpStream::connect_timeout(&server_address, Duration::from_millis(100)).is_ok() {
-                    server_ready = true;
-                    break;
-                }
-                thread::sleep(Duration::from_millis(100));
-            }
-            if !server_ready {
-                let _ = child.kill();
-                return Err(io::Error::new(io::ErrorKind::TimedOut, "本地图片服务启动超时").into());
-            }
-
             app.manage(DesktopState {
                 app_data_directory,
                 image_directory: Mutex::new(selected_image_directory),
-                sidecar: Mutex::new(Some(SidecarProcess { child, terminated })),
             });
 
-            WebviewWindowBuilder::new(
-                app,
-                "main",
-                WebviewUrl::External("http://127.0.0.1:8787/?lumora-desktop=1".parse()?),
-            )
-            .title("lumora image")
-            .inner_size(1380.0, 900.0)
-            .min_inner_size(1000.0, 700.0)
-            .center()
-            .build()?;
+            let app_url = configured_app_url()?;
+            let allowed_origin = app_url.clone();
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
+                .use_https_scheme(true)
+                .on_navigation(move |url| same_origin(url, &allowed_origin))
+                .title("lumora image")
+                .inner_size(1380.0, 900.0)
+                .min_inner_size(1000.0, 700.0)
+                .center()
+                .build()?;
             Ok(())
         })
         .build(tauri::generate_context!());
 
-    let app = match app {
-        Ok(app) => app,
+    match app {
+        Ok(app) => app.run(|_, _| {}),
         Err(error) => {
             rfd::MessageDialog::new()
                 .set_title("lumora image")
-                .set_description(format!(
-                    "Lumora image 启动失败：\n\n{error}\n\n本应用无需管理员权限，请检查是否已重复打开或被安全软件拦截。"
-                ))
+                .set_description(format!("Lumora image 启动失败：\n\n{error}"))
                 .set_level(rfd::MessageLevel::Error)
                 .show();
-            return;
         }
-    };
-
-    app.run(|app_handle, event| {
-        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
-            if let Some(state) = app_handle.try_state::<DesktopState>() {
-                let _ = stop_sidecar(&state);
-            }
-        }
-    });
+    }
 }

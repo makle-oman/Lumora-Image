@@ -1,9 +1,10 @@
 [[permission]]
 identifier = "allow-desktop-settings"
-description = "Allows the Lumora desktop window to read and change the local image directory."
+description = "Allows the Lumora desktop window to manage its local image directory and files."
 commands.allow = [
   "image_directory",
   "take_migration_error",
   "set_image_directory",
-  "stop_desktop_sidecar",
+  "save_local_image",
+  "delete_local_image",
 ]

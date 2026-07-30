@@ -13,6 +13,7 @@ import {
   getPublicConfig,
   getSession,
   getUsage,
+  reportHeartbeat,
   revokeApiKey as revokeApiKeyRequest,
   updateProfile as updateProfileRequest,
   type AnnouncementItem,
@@ -22,7 +23,7 @@ import {
   type UsageSummary,
   type UserProfile,
 } from '../services/userApi'
-import { ApiError } from '../services/http'
+import { ApiError, getDeviceId } from '../services/http'
 
 export type { AnnouncementItem, ApiKeyItem, ProviderItem, PublicConfig, UsageSummary, UserProfile }
 
@@ -44,7 +45,6 @@ const emptyUsage: UsageSummary = {
 }
 
 const announcementReadKey = 'lumora:announcement-read-version'
-
 export const useUserStore = defineStore('user', () => {
   // Auth state
   const isLoggedIn = ref(false)
@@ -68,6 +68,27 @@ export const useUserStore = defineStore('user', () => {
   const publicConfig = ref<PublicConfig>({ supportEmail: null, supportWechat: null })
   const usage = ref<UsageSummary>({ ...emptyUsage })
   const operationError = ref('')
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+  async function sendHeartbeat(): Promise<void> {
+    if (!isLoggedIn.value) return
+    await reportHeartbeat({
+      deviceId: getDeviceId(),
+      platform: navigator.platform || 'web',
+      appVersion: __APP_VERSION__,
+    })
+  }
+
+  function startHeartbeat(): void {
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    void sendHeartbeat().catch(() => undefined)
+    heartbeatTimer = setInterval(() => void sendHeartbeat().catch(() => undefined), 60_000)
+  }
+
+  function stopHeartbeat(): void {
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
 
   async function initialize(): Promise<void> {
     authError.value = ''
@@ -96,7 +117,10 @@ export const useUserStore = defineStore('user', () => {
       publicConfig.value = { supportEmail: null, supportWechat: null }
     }
 
-    if (isLoggedIn.value) await loadAccountData(false)
+    if (isLoggedIn.value) {
+      await loadAccountData(false)
+      startHeartbeat()
+    }
   }
 
   async function loadAccountData(showError = true): Promise<void> {
@@ -142,6 +166,7 @@ export const useUserStore = defineStore('user', () => {
     try {
       user.value = await authenticateRequest(mode, email, password)
       isLoggedIn.value = true
+      startHeartbeat()
       await loadAccountData()
     }
     catch (error) {
@@ -154,6 +179,7 @@ export const useUserStore = defineStore('user', () => {
     operationError.value = ''
     try {
       await endSession()
+      stopHeartbeat()
       isLoggedIn.value = false
       user.value = { ...emptyUser }
       apiKeys.value = []
@@ -261,6 +287,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function expireSession(): void {
+    stopHeartbeat()
     isLoggedIn.value = false
     user.value = { ...emptyUser }
     apiKeys.value = []

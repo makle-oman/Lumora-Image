@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { isTauri } from '@tauri-apps/api/core'
+
+const deviceIdKey = 'lumora:device-id'
 
 const ApiResponseSchema = z.object({
   code: z.number().int(),
@@ -31,8 +34,26 @@ export async function readJson(response: Response): Promise<unknown> {
   return parsed.data.data
 }
 
+export function getDeviceId(): string {
+  if (typeof localStorage === 'undefined') return crypto.randomUUID()
+  const current = localStorage.getItem(deviceIdKey)
+  if (current) return current
+  const created = crypto.randomUUID()
+  localStorage.setItem(deviceIdKey, created)
+  return created
+}
+
 export async function requestJson<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
+  const headers = new Headers(init?.headers)
+  if (typeof localStorage !== 'undefined' && typeof navigator !== 'undefined') {
+    headers.set('X-Lumora-Device-Id', getDeviceId())
+    headers.set('X-Lumora-Platform', navigator.platform || 'web')
+    headers.set('X-Lumora-App-Version', __APP_VERSION__)
+    if (isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1') {
+      headers.set('X-Lumora-Client', 'desktop')
+    }
+  }
+  const response = await fetch(path, { ...init, headers })
   const parsed = schema.safeParse(await readJson(response))
   if (!parsed.success) throw new ApiError('服务端响应格式无效', response.status)
   return parsed.data

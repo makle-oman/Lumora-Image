@@ -4,6 +4,8 @@ import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
+import { confirmImageLocalized } from '../services/imageApi'
+import type { GeneratedImage } from '../types/generation'
 
 export interface ReleaseNoteItem {
   category: 'release'
@@ -148,7 +150,6 @@ export const useDesktopStore = defineStore('desktop', () => {
         }
         downloadProgress.value = 100
       })
-      await invoke('stop_desktop_sidecar')
       await update.install()
       await relaunch()
     }
@@ -189,6 +190,52 @@ export const useDesktopStore = defineStore('desktop', () => {
     }
   }
 
+  function localImageUrl(image: GeneratedImage): string {
+    return `https://lumora-local.localhost/${encodeURIComponent(image.id)}.${image.format}`
+  }
+
+  async function prepareLocalImages(items: ReadonlyArray<GeneratedImage>): Promise<ReadonlyArray<GeneratedImage>> {
+    if (!available) return items
+    const prepared: GeneratedImage[] = []
+    for (const image of items) {
+      if (image.storage === 'server') {
+        prepared.push(image)
+        continue
+      }
+      if (image.storage === 'local') {
+        prepared.push({ ...image, url: localImageUrl(image) })
+        continue
+      }
+      try {
+        const response = await fetch(image.url, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`图片下载失败: ${response.status}`)
+        const url = await invoke<string>('save_local_image', new Uint8Array(await response.arrayBuffer()), {
+          headers: {
+            'x-lumora-image-id': image.id,
+            'x-lumora-image-format': image.format,
+          },
+        })
+        await confirmImageLocalized(image.id)
+        prepared.push({ ...image, url, storage: 'local', isPublic: false })
+      }
+      catch (cause) {
+        error.value = cause instanceof Error ? cause.message : '图片本地保存失败'
+        prepared.push(image)
+      }
+    }
+    return prepared
+  }
+
+  async function deleteLocalImage(image: GeneratedImage): Promise<void> {
+    if (!available || image.storage === 'server') return
+    try {
+      await invoke('delete_local_image', { id: image.id, format: image.format })
+    }
+    catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '本地图片删除失败'
+    }
+  }
+
   return {
     available,
     version,
@@ -210,5 +257,7 @@ export const useDesktopStore = defineStore('desktop', () => {
     checkForUpdates,
     startUpdateDownload,
     chooseImageDirectory,
+    prepareLocalImages,
+    deleteLocalImage,
   }
 })

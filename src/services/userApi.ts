@@ -153,3 +153,15 @@ export async function deleteProvider(id: string): Promise<void> {
 export async function getUsage(): Promise<UsageSummary> {
   return requestJson('/api/usage', UsageSchema)
 }
+
+export async function reportHeartbeat(input: {
+  deviceId: string
+  platform: string
+  appVersion: string
+}): Promise<void> {
+  await requestJson('/api/activity/heartbeat', z.null(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}

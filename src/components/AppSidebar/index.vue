@@ -150,6 +150,7 @@ onUnmounted(() => {
       </button>
 
       <button
+        v-if="desktopStore.available"
         class="utility-item"
         type="button"
         title="图片存放位置"

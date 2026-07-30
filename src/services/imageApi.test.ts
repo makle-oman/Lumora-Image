@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  confirmImageLocalized,
   generateImage,
   getActiveGenerationTasks,
   getGenerationTasks,
@@ -20,6 +21,7 @@ const image = {
   format: 'png',
   isPublic: false,
   category: '其他',
+  storage: 'server',
 }
 
 const task = {
@@ -105,6 +107,20 @@ describe('image service', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/images/image-1/visibility', expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({ isPublic: true }),
+    }))
+  })
+
+  it('confirms that a desktop image was saved locally', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({
+      id: image.id,
+      storage: 'local',
+      isPublic: false,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(confirmImageLocalized(image.id)).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/images/image-1/local', expect.objectContaining({
+      method: 'POST',
     }))
   })
 })

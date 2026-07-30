@@ -20,6 +20,7 @@ export type GeneratedImage = Readonly<{
   format: 'png' | 'jpeg' | 'webp'
   isPublic: boolean
   category: string
+  storage: 'server' | 'pending' | 'local'
   author?: string
 }>
 

@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "desktop:prepare": "pnpm build && cargo build --release --manifest-path ../lumora-image-studio-backend/Cargo.toml && node scripts/prepare-desktop.mjs",
+    "desktop:prepare": "pnpm build",
     "desktop:dev": "pnpm desktop:prepare && tauri dev",
     "desktop:build": "pnpm desktop:prepare && tauri build",
     "start": "vite preview",

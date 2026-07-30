@@ -104,8 +104,48 @@ describe('desktop store', () => {
 
     expect(store.downloadProgress).toBe(100)
     expect(download).toHaveBeenCalledOnce()
-    expect(invoke).toHaveBeenCalledWith('stop_desktop_sidecar')
     expect(install).toHaveBeenCalledOnce()
     expect(relaunch).toHaveBeenCalledOnce()
+  })
+
+  it('downloads pending images locally and confirms server cleanup', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        message: 'success',
+        data: { id: 'img-0123456789abcdef0123456789abcdef', storage: 'local', isPublic: false },
+        timestamp: 1,
+      })))
+    vi.stubGlobal('fetch', fetchMock)
+    invoke.mockImplementation((command: string) => {
+      if (command === 'save_local_image') {
+        return Promise.resolve('https://lumora-local.localhost/img-0123456789abcdef0123456789abcdef.png')
+      }
+      return Promise.resolve(null)
+    })
+    const store = useDesktopStore()
+
+    const images = await store.prepareLocalImages([{
+      id: 'img-0123456789abcdef0123456789abcdef',
+      url: '/api/images/img-0123456789abcdef0123456789abcdef/file',
+      prompt: 'test',
+      size: '1024x1024',
+      model: 'gpt-image-2',
+      createdAt: '2026-07-30T00:00:00Z',
+      source: 'generated',
+      format: 'png',
+      isPublic: true,
+      category: '其他',
+      storage: 'pending',
+    }])
+
+    expect(images[0]).toMatchObject({ storage: 'local', isPublic: false })
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/images/img-0123456789abcdef0123456789abcdef/file', {
+      cache: 'no-store',
+    })
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/images/img-0123456789abcdef0123456789abcdef/local', expect.objectContaining({
+      method: 'POST',
+    }))
   })
 })

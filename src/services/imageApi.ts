@@ -23,6 +23,7 @@ const GeneratedImageSchema = z.object({
   format: z.enum(['png', 'jpeg', 'webp']),
   isPublic: z.boolean(),
   category: z.string(),
+  storage: z.enum(['server', 'pending', 'local']),
   author: z.string().optional(),
 })
 
@@ -58,6 +59,11 @@ const PublicStatsSchema = z.object({
 })
 const ImageVisibilitySchema = z.object({
   id: z.string().min(1),
+  isPublic: z.boolean(),
+})
+const LocalizedImageSchema = z.object({
+  id: z.string().min(1),
+  storage: z.literal('local'),
   isPublic: z.boolean(),
 })
 
@@ -141,6 +147,12 @@ export async function getPublicStats(): Promise<PublicStats> {
 
 export async function deleteImage(id: string): Promise<void> {
   await requestJson(`/api/images/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' })
+}
+
+export async function confirmImageLocalized(id: string): Promise<void> {
+  await requestJson(`/api/images/${encodeURIComponent(id)}/local`, LocalizedImageSchema, {
+    method: 'POST',
+  })
 }
 
 export async function updateImageVisibility(id: string, isPublic: boolean): Promise<{ id: string; isPublic: boolean }> {

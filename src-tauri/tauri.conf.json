@@ -16,10 +16,6 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/lumora-server"],
-    "resources": {
-      "../dist/": "web/"
-    },
     "windows": {
       "nsis": {
         "installMode": "currentUser"

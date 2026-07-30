@@ -12,6 +12,7 @@ import {
   type GenerationTask,
 } from '../services/imageApi'
 import { ApiError } from '../services/http'
+import { useDesktopStore } from './desktop'
 import { useUserStore } from './user'
 import type {
   ApiStatus,
@@ -49,7 +50,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   async function loadImages(showError = true): Promise<void> {
     try {
-      images.value = await getImages()
+      images.value = await useDesktopStore().prepareLocalImages(await getImages())
     }
     catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -187,7 +188,9 @@ export const useGenerationStore = defineStore('generation', () => {
 
   async function removeImage(id: string): Promise<void> {
     try {
+      const image = images.value.find(item => item.id === id)
       await deleteImage(id)
+      if (image) await useDesktopStore().deleteLocalImage(image)
       images.value = images.value.filter(image => image.id !== id)
     }
     catch (error) {
@@ -217,7 +220,9 @@ export const useGenerationStore = defineStore('generation', () => {
 
   async function clearGallery(): Promise<void> {
     try {
+      const currentImages = images.value
       await deleteAllImages()
+      await Promise.all(currentImages.map(image => useDesktopStore().deleteLocalImage(image)))
       images.value = []
     }
     catch (error) {
