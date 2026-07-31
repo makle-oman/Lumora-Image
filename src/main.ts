@@ -17,9 +17,12 @@ const userStore = useUserStore(pinia)
 const desktopStore = useDesktopStore(pinia)
 const generationStore = useGenerationStore(pinia)
 const galleryStore = useGalleryStore(pinia)
-await Promise.all([userStore.initialize(), desktopStore.initialize()])
-router.beforeEach((to) => {
-  if (!to.meta.requiresAuth || userStore.isLoggedIn) return true
+const userInitialization = userStore.initialize()
+const desktopInitialization = desktopStore.initialize()
+router.beforeEach(async (to) => {
+  if (!to.meta.requiresAuth) return true
+  await userInitialization
+  if (userStore.isLoggedIn) return true
   userStore.toggleAuthModal(true)
   return { name: 'home' }
 })
@@ -30,11 +33,21 @@ router.afterEach((_to, from) => {
   void Promise.allSettled(refreshes)
 })
 app.use(router)
-await Promise.all([generationStore.checkConfiguration(), galleryStore.loadStats()])
-if (userStore.isLoggedIn) {
-  await generationStore.resumeTasks(false)
-  await generationStore.loadImages(false)
-}
-
 app.mount('#app')
 void desktopStore.checkForUpdates()
+
+async function initializeData(): Promise<void> {
+  await Promise.all([
+    userInitialization,
+    desktopInitialization,
+    generationStore.checkConfiguration(),
+    galleryStore.loadStats(),
+  ])
+  if (!userStore.isLoggedIn) return
+  await Promise.all([
+    generationStore.resumeTasks(false),
+    generationStore.loadImages(false),
+  ])
+}
+
+void initializeData()

@@ -123,7 +123,7 @@ describe('desktop store', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         code: 0,
         message: 'success',
-        data: { id: 'img-0123456789abcdef0123456789abcdef', storage: 'local', isPublic: false },
+        data: { id: 'img-0123456789abcdef0123456789abcdef', storage: 'local', isPublic: true },
         timestamp: 1,
       })))
     vi.stubGlobal('fetch', fetchMock)
@@ -149,11 +149,11 @@ describe('desktop store', () => {
       storage: 'pending',
     }])
 
-    expect(images[0]).toMatchObject({ storage: 'local', isPublic: false })
+    expect(images[0]).toMatchObject({ storage: 'local', isPublic: true })
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/images/img-0123456789abcdef0123456789abcdef/file', {
       cache: 'no-store',
     })
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/images/img-0123456789abcdef0123456789abcdef/local', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://makle.cloud/api/images/img-0123456789abcdef0123456789abcdef/local', expect.objectContaining({
       method: 'POST',
     }))
   })

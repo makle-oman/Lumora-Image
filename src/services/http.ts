@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { isTauri } from '@tauri-apps/api/core'
 
 const deviceIdKey = 'lumora:device-id'
+const remoteServiceOrigin = 'https://makle.cloud'
 
 const ApiResponseSchema = z.object({
   code: z.number().int(),
@@ -14,6 +15,15 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message)
   }
+}
+
+function isDesktopClient(): boolean {
+  return isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1'
+}
+
+export function resolveServiceUrl(path: string): string {
+  if (!isDesktopClient() || !/^\/(?:api|public|v1)(?:\/|$)/.test(path)) return path
+  return `${remoteServiceOrigin}${path}`
 }
 
 export async function readJson(response: Response): Promise<unknown> {
@@ -49,11 +59,11 @@ export async function requestJson<T>(path: string, schema: z.ZodType<T>, init?: 
     headers.set('X-Lumora-Device-Id', getDeviceId())
     headers.set('X-Lumora-Platform', navigator.platform || 'web')
     headers.set('X-Lumora-App-Version', __APP_VERSION__)
-    if (isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1') {
+    if (isDesktopClient()) {
       headers.set('X-Lumora-Client', 'desktop')
     }
   }
-  const response = await fetch(path, { ...init, headers })
+  const response = await fetch(resolveServiceUrl(path), { ...init, credentials: 'include', headers })
   const parsed = schema.safeParse(await readJson(response))
   if (!parsed.success) throw new ApiError('服务端响应格式无效', response.status)
   return parsed.data

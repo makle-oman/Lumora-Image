@@ -6,15 +6,16 @@ import {
   type ImageSize,
   type PublicStats,
 } from '../types/generation'
-import { requestJson } from './http'
+import { requestJson, resolveServiceUrl } from './http'
 
 const ImageSizeSchema = z.string().min(1).max(32)
   .refine(value => value === 'auto' || /^\d+x\d+$/.test(value))
   .transform(value => value as ImageSize)
+const ImageUrlSchema = z.string().min(1).transform(resolveServiceUrl)
 
 const GeneratedImageSchema = z.object({
   id: z.string().min(1),
-  url: z.string().min(1),
+  url: ImageUrlSchema,
   prompt: z.string(),
   size: ImageSizeSchema,
   model: z.literal('gpt-image-2'),
@@ -25,7 +26,7 @@ const GeneratedImageSchema = z.object({
   category: z.string(),
   storage: z.enum(['server', 'pending', 'local']),
   author: z.string().optional(),
-  referenceImages: z.array(z.string().min(1)).default([]),
+  referenceImages: z.array(ImageUrlSchema).default([]),
 })
 
 const HealthResponseSchema = z.object({
@@ -41,7 +42,7 @@ const GenerationTaskSchema = z.object({
   prompt: z.string(),
   imageId: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
-  referenceImages: z.array(z.string().min(1)).default([]),
+  referenceImages: z.array(ImageUrlSchema).default([]),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 })
@@ -151,9 +152,18 @@ export async function deleteImage(id: string): Promise<void> {
   await requestJson(`/api/images/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' })
 }
 
-export async function confirmImageLocalized(id: string): Promise<void> {
-  await requestJson(`/api/images/${encodeURIComponent(id)}/local`, LocalizedImageSchema, {
+export async function confirmImageLocalized(id: string): Promise<z.infer<typeof LocalizedImageSchema>> {
+  return requestJson(`/api/images/${encodeURIComponent(id)}/local`, LocalizedImageSchema, {
     method: 'POST',
+  })
+}
+
+export async function publishLocalImage(id: string, image: File): Promise<z.infer<typeof ImageVisibilitySchema>> {
+  const form = new FormData()
+  form.set('image', image, image.name)
+  return requestJson(`/api/images/${encodeURIComponent(id)}/publish`, ImageVisibilitySchema, {
+    method: 'POST',
+    body: form,
   })
 }
 

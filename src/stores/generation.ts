@@ -8,6 +8,7 @@ import {
   getGenerationTasks,
   getHealth,
   getImages,
+  publishLocalImage,
   updateImageVisibility,
   type GenerationTask,
 } from '../services/imageApi'
@@ -207,7 +208,21 @@ export const useGenerationStore = defineStore('generation', () => {
 
   async function setImageVisibility(id: string, isPublic: boolean): Promise<boolean> {
     try {
-      const updated = await updateImageVisibility(id, isPublic)
+      const image = images.value.find(item => item.id === id)
+      let updated: { id: string; isPublic: boolean }
+      if (isPublic && image?.storage === 'local') {
+        const response = await fetch(image.url, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`本地图片读取失败: ${response.status}`)
+        const blob = await response.blob()
+        const contentType = blob.type || (image.format === 'jpeg' ? 'image/jpeg' : `image/${image.format}`)
+        updated = await publishLocalImage(
+          id,
+          new File([blob], `${id}.${image.format}`, { type: contentType }),
+        )
+      }
+      else {
+        updated = await updateImageVisibility(id, isPublic)
+      }
       images.value = images.value.map(image => (
         image.id === updated.id ? { ...image, isPublic: updated.isPublic } : image
       ))

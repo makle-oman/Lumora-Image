@@ -226,8 +226,8 @@ export const useDesktopStore = defineStore('desktop', () => {
             'x-lumora-image-format': image.format,
           },
         })
-        await confirmImageLocalized(image.id)
-        prepared.push({ ...image, url, storage: 'local', isPublic: false })
+        const localized = await confirmImageLocalized(image.id)
+        prepared.push({ ...image, url, storage: localized.storage, isPublic: localized.isPublic })
       }
       catch (cause) {
         error.value = cause instanceof Error ? cause.message : '图片本地保存失败'

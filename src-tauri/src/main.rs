@@ -2,7 +2,6 @@
 
 use std::{
     fs, io,
-    net::IpAddr,
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
@@ -11,10 +10,8 @@ use std::{
 use tauri::{
     http,
     ipc::{InvokeBody, Request},
-    Manager, Url, WebviewUrl, WebviewWindowBuilder,
+    Manager, WebviewUrl, WebviewWindowBuilder,
 };
-
-const DEFAULT_APP_URL: &str = "https://makle.cloud";
 
 struct DesktopState {
     app_data_directory: PathBuf,
@@ -180,37 +177,6 @@ fn delete_local_image(
     }
 }
 
-fn configured_app_url() -> Result<Url, Box<dyn std::error::Error>> {
-    let mut url = Url::parse(option_env!("LUMORA_APP_URL").unwrap_or(DEFAULT_APP_URL))?;
-    let host = url
-        .host_str()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "集中服务地址缺少域名"))?;
-    let loopback = host == "localhost"
-        || host
-            .parse::<IpAddr>()
-            .is_ok_and(|address| address.is_loopback());
-    if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "集中服务必须使用 HTTPS，本机联调可使用 localhost",
-        )
-        .into());
-    }
-    if !url
-        .query_pairs()
-        .any(|(name, value)| name == "lumora-desktop" && value == "1")
-    {
-        url.query_pairs_mut().append_pair("lumora-desktop", "1");
-    }
-    Ok(url)
-}
-
-fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host_str() == right.host_str()
-        && left.port_or_known_default() == right.port_or_known_default()
-}
-
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -304,11 +270,8 @@ fn main() {
                 image_directory: Mutex::new(selected_image_directory),
             });
 
-            let app_url = configured_app_url()?;
-            let allowed_origin = app_url.clone();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .use_https_scheme(true)
-                .on_navigation(move |url| same_origin(url, &allowed_origin))
                 .title("lumora image")
                 .inner_size(1380.0, 900.0)
                 .min_inner_size(1000.0, 700.0)

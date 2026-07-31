@@ -12,6 +12,7 @@ import {
 } from 'lucide-vue-next'
 import { useUserStore } from '../../stores/user'
 import { useGenerationStore } from '../../stores/generation'
+import { resolveServiceUrl } from '../../services/http'
 import CopyCodeBlock from './components/CopyCodeBlock/index.vue'
 
 const userStore = useUserStore()
@@ -172,7 +173,7 @@ func main() {
 }`,
 }))
 
-const docsBaseUrl = `${window.location.origin}/v1`
+const docsBaseUrl = resolveServiceUrl('/v1')
 const docsCode = {
   generationResponse: `{
   "created": 1785110400,

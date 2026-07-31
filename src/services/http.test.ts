@@ -1,12 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { ApiError, requestJson } from './http'
+import { ApiError, requestJson, resolveServiceUrl } from './http'
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe('API response envelope', () => {
+  it('uses the remote service for desktop requests', async () => {
+    vi.stubGlobal('location', { search: '?lumora-desktop=1' })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: 0,
+      message: 'success',
+      data: { value: 1 },
+      timestamp: 1,
+    })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(resolveServiceUrl('/public/images/image-1')).toBe('https://makle.cloud/public/images/image-1')
+    await requestJson('/api/test', z.object({ value: z.number() }))
+
+    expect(fetchMock).toHaveBeenCalledWith('https://makle.cloud/api/test', expect.objectContaining({
+      credentials: 'include',
+    }))
+  })
+
   it('returns validated data from a successful response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       code: 0,

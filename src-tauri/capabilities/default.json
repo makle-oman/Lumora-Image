@@ -3,9 +3,6 @@
   "identifier": "main-capability",
   "description": "Lumora desktop window permissions",
   "windows": ["main"],
-  "remote": {
-    "urls": ["http://127.0.0.1:8790/*", "http://localhost:8790/*", "https://*"]
-  },
   "permissions": [
     "core:default",
     "allow-desktop-settings",

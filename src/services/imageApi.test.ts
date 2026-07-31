@@ -7,6 +7,7 @@ import {
   getHealth,
   getImages,
   getPublicGallery,
+  publishLocalImage,
   updateImageVisibility,
 } from './imageApi'
 
@@ -104,6 +105,16 @@ describe('image service', () => {
     }])
   })
 
+  it('resolves desktop image resources against the remote service', async () => {
+    vi.stubGlobal('location', { search: '?lumora-desktop=1' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({ items: [image] })))
+
+    await expect(getImages()).resolves.toMatchObject([{
+      url: 'https://makle.cloud/api/images/image-1/file',
+      referenceImages: ['https://makle.cloud/api/images/image-1/references/0'],
+    }])
+  })
+
   it('updates image visibility', async () => {
     const fetchMock = vi.fn().mockResolvedValue(apiResponse({ id: image.id, isPublic: true }))
     vi.stubGlobal('fetch', fetchMock)
@@ -115,6 +126,23 @@ describe('image service', () => {
     }))
   })
 
+  it('uploads a local image when publishing it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({ id: image.id, isPublic: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File([new Uint8Array([1, 2, 3])], 'image.png', { type: 'image/png' })
+
+    await expect(publishLocalImage(image.id, file)).resolves.toEqual({ id: image.id, isPublic: true })
+    const form = fetchMock.mock.calls[0]?.[1]?.body as FormData
+    expect(fetchMock).toHaveBeenCalledWith('/api/images/image-1/publish', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(form.get('image')).toMatchObject({
+      name: 'image.png',
+      size: 3,
+      type: 'image/png',
+    })
+  })
+
   it('confirms that a desktop image was saved locally', async () => {
     const fetchMock = vi.fn().mockResolvedValue(apiResponse({
       id: image.id,
@@ -123,7 +151,11 @@ describe('image service', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(confirmImageLocalized(image.id)).resolves.toBeUndefined()
+    await expect(confirmImageLocalized(image.id)).resolves.toEqual({
+      id: image.id,
+      storage: 'local',
+      isPublic: false,
+    })
     expect(fetchMock).toHaveBeenCalledWith('/api/images/image-1/local', expect.objectContaining({
       method: 'POST',
     }))
