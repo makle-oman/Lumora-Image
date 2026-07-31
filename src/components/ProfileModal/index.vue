@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { Camera, CheckCircle2, Lock, Mail, User, X } from 'lucide-vue-next'
+import { useGalleryStore } from '../../stores/gallery'
 import { useUserStore } from '../../stores/user'
 
 const userStore = useUserStore()
+const galleryStore = useGalleryStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const name = ref('')
@@ -98,6 +100,7 @@ async function handleSubmit(): Promise<void> {
       payload.password = password.value
     }
     await userStore.updateProfile(payload)
+    await Promise.all([galleryStore.refresh(false), galleryStore.loadStats()])
     isSuccess.value = true
     setTimeout(() => {
       isSuccess.value = false

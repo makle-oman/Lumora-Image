@@ -66,6 +66,15 @@ describe('desktop store', () => {
     expect(relaunch).toHaveBeenCalledOnce()
   })
 
+  it('opens the active image directory', async () => {
+    invoke.mockResolvedValue(null)
+    const store = useDesktopStore()
+
+    await store.openImageDirectory()
+
+    expect(invoke).toHaveBeenCalledWith('open_image_directory')
+  })
+
   it('opens the update modal with release data', async () => {
     checkForUpdate.mockResolvedValue({
       version: '1.0.7',

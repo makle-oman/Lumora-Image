@@ -528,7 +528,14 @@ curl -X POST ${docsBaseUrl}/images/edits \\
 } as const
 
 onMounted(() => {
-  if (!userStore.isLoggedIn) userStore.toggleAuthModal(true)
+  if (!userStore.isLoggedIn) {
+    userStore.toggleAuthModal(true)
+    return
+  }
+  void Promise.all([
+    userStore.loadAccountData(false),
+    generationStore.checkConfiguration(),
+  ])
 })
 
 onUnmounted(() => {

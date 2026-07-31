@@ -55,6 +55,10 @@ onMounted(() => {
   if (route.query.prompt) {
     prompt.value = String(route.query.prompt)
   }
+  void Promise.all([
+    generationStore.resumeTasks(false),
+    generationStore.loadImages(false),
+  ])
 })
 
 onUnmounted(() => {

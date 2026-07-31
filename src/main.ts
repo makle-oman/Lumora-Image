@@ -23,6 +23,12 @@ router.beforeEach((to) => {
   userStore.toggleAuthModal(true)
   return { name: 'home' }
 })
+router.afterEach((_to, from) => {
+  if (!from.name) return
+  const refreshes = [userStore.refreshAnnouncements(), userStore.refreshPublicConfig()]
+  if (userStore.isLoggedIn) refreshes.push(userStore.refreshProfile())
+  void Promise.allSettled(refreshes)
+})
 app.use(router)
 await Promise.all([generationStore.checkConfiguration(), galleryStore.loadStats()])
 if (userStore.isLoggedIn) {

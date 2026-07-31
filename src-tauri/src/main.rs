@@ -4,6 +4,7 @@ use std::{
     fs, io,
     net::IpAddr,
     path::{Path, PathBuf},
+    process::Command,
     sync::Mutex,
 };
 
@@ -103,6 +104,29 @@ fn set_image_directory(path: String, state: tauri::State<'_, DesktopState>) -> R
 }
 
 #[tauri::command]
+fn open_image_directory(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    let directory = state
+        .image_directory
+        .lock()
+        .map_err(|_| "图片目录状态异常".to_string())?
+        .clone();
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let mut command = Command::new("explorer");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(target_os = "linux")]
+    let mut command = Command::new("xdg-open");
+
+    command
+        .arg(directory)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn save_local_image(
     request: Request<'_>,
     state: tauri::State<'_, DesktopState>,
@@ -196,6 +220,7 @@ fn main() {
             image_directory,
             take_migration_error,
             set_image_directory,
+            open_image_directory,
             save_local_image,
             delete_local_image
         ])

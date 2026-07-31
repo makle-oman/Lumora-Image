@@ -90,6 +90,17 @@ export const useUserStore = defineStore('user', () => {
     heartbeatTimer = null
   }
 
+  async function refreshAnnouncements(): Promise<void> {
+    const announcementItems = await getAnnouncements()
+    announcements.value = announcementItems
+    const version = announcementItems.map(item => `${item.id}:${item.date}:${item.title}`).join('|')
+    hasUnreadAnnouncements.value = Boolean(version && localStorage.getItem(announcementReadKey) !== version)
+  }
+
+  async function refreshPublicConfig(): Promise<void> {
+    publicConfig.value = await getPublicConfig()
+  }
+
   async function initialize(): Promise<void> {
     authError.value = ''
     operationError.value = ''
@@ -329,5 +340,7 @@ export const useUserStore = defineStore('user', () => {
     setCredits,
     clearOneTimeApiKey,
     expireSession,
+    refreshAnnouncements,
+    refreshPublicConfig,
   }
 })

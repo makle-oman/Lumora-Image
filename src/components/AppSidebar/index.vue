@@ -47,6 +47,7 @@ function handleLoginClick(e: MouseEvent): void {
   e.stopPropagation()
   if (userStore.isLoggedIn) {
     isProfileMenuOpen.value = !isProfileMenuOpen.value
+    if (isProfileMenuOpen.value) void Promise.allSettled([userStore.refreshProfile()])
   } else {
     userStore.toggleAuthModal(true)
   }
@@ -59,14 +60,21 @@ function handleClickOutside(event: MouseEvent): void {
   }
 }
 
-function handleContactAdmin(): void {
+async function handleContactAdmin(): Promise<void> {
   isProfileMenuOpen.value = false
+  await Promise.allSettled([userStore.refreshPublicConfig()])
   isContactAdminOpen.value = true
 }
 
-function handleProfileSettings(): void {
+async function handleProfileSettings(): Promise<void> {
   isProfileMenuOpen.value = false
+  await Promise.allSettled([userStore.refreshProfile()])
   userStore.toggleProfileModal(true)
+}
+
+async function handleNotice(): Promise<void> {
+  await Promise.allSettled([userStore.refreshAnnouncements()])
+  userStore.toggleNoticeModal(true)
 }
 
 function handleStorageSettings(): void {
@@ -140,7 +148,7 @@ onUnmounted(() => {
         class="utility-item"
         type="button"
         title="系统公告"
-        @click="userStore.toggleNoticeModal(true)"
+        @click="handleNotice"
       >
         <Bell class="nav-icon" :size="19" :stroke-width="1.7" />
         <span class="notice-wrap nav-label">

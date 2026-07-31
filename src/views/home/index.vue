@@ -35,7 +35,10 @@ async function generate(request: GenerateImageRequest): Promise<void> {
   await generationStore.generate(request)
 }
 
-onMounted(() => void galleryStore.search('', '全部', false))
+onMounted(() => void Promise.all([
+  galleryStore.loadStats(),
+  galleryStore.search('', '全部', false),
+]))
 </script>
 
 <template>

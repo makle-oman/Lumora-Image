@@ -120,6 +120,15 @@ async function copyPath() {
           <!-- Action Buttons -->
           <div class="action-bar">
             <button
+              class="open-dir-btn"
+              type="button"
+              :disabled="desktopStore.isSelecting"
+              @click="desktopStore.openImageDirectory"
+            >
+              <FolderOpen :size="16" />
+              <span>打开存放位置</span>
+            </button>
+            <button
               class="change-dir-btn"
               type="button"
               :disabled="desktopStore.isSelecting"
@@ -424,10 +433,14 @@ async function copyPath() {
 
 /* Action Bar */
 .action-bar {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 10px;
   width: 100%;
   margin-bottom: 20px;
 }
 
+.open-dir-btn,
 .change-dir-btn {
   display: flex;
   align-items: center;
@@ -435,15 +448,29 @@ async function copyPath() {
   gap: 8px;
   width: 100%;
   height: 44px;
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-  color: #ffffff;
   font-size: 14px;
   font-weight: 650;
   border: 0;
   border-radius: 14px;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.3);
   transition: all 0.25s ease;
+}
+
+.open-dir-btn {
+  color: #334155;
+  background: #f1f5f9;
+}
+
+.open-dir-btn:hover:not(:disabled) {
+  color: #0f172a;
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.change-dir-btn {
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.3);
 }
 
 .change-dir-btn:hover:not(:disabled) {
@@ -451,6 +478,7 @@ async function copyPath() {
   box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4);
 }
 
+.open-dir-btn:disabled,
 .change-dir-btn:disabled {
   opacity: 0.7;
   cursor: wait;

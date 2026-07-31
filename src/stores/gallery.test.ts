@@ -57,4 +57,30 @@ describe('gallery store', () => {
 
     expect(store.error).toBe('搜索失败')
   })
+
+  it('refreshes the latest search without resetting its filters', async () => {
+    getPublicGallery.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 })
+    const store = useGalleryStore()
+
+    await store.search('poster', '海报插画')
+    getPublicGallery.mockClear()
+    await store.refresh()
+
+    expect(getPublicGallery).toHaveBeenCalledWith({ query: 'poster', category: '海报插画' })
+  })
+
+  it('ignores stale search responses', async () => {
+    let resolveFirst: ((value: { items: Array<{ id: string }> }) => void) | undefined
+    getPublicGallery
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ items: [{ id: 'new' }] })
+    const store = useGalleryStore()
+
+    const firstSearch = store.search('old')
+    await store.search('new')
+    resolveFirst?.({ items: [{ id: 'old' }] })
+    await firstSearch
+
+    expect(store.items).toEqual([{ id: 'new' }])
+  })
 })

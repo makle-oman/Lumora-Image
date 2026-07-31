@@ -13,6 +13,7 @@ import {
 } from '../services/imageApi'
 import { ApiError } from '../services/http'
 import { useDesktopStore } from './desktop'
+import { useGalleryStore } from './gallery'
 import { useUserStore } from './user'
 import type {
   ApiStatus,
@@ -192,6 +193,9 @@ export const useGenerationStore = defineStore('generation', () => {
       await deleteImage(id)
       if (image) await useDesktopStore().deleteLocalImage(image)
       images.value = images.value.filter(image => image.id !== id)
+      if (image?.isPublic) {
+        await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
+      }
     }
     catch (error) {
       requestState.value = {
@@ -207,6 +211,7 @@ export const useGenerationStore = defineStore('generation', () => {
       images.value = images.value.map(image => (
         image.id === updated.id ? { ...image, isPublic: updated.isPublic } : image
       ))
+      await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
       return true
     }
     catch (error) {
@@ -224,6 +229,7 @@ export const useGenerationStore = defineStore('generation', () => {
       await deleteAllImages()
       await Promise.all(currentImages.map(image => useDesktopStore().deleteLocalImage(image)))
       images.value = []
+      await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
     }
     catch (error) {
       requestState.value = {

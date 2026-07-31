@@ -10,6 +10,9 @@ export const useGalleryStore = defineStore('gallery', () => {
   const stats = ref<PublicStats>(emptyStats)
   const loading = ref(false)
   const error = ref('')
+  let latestSearchId = 0
+  let lastQuery = ''
+  let lastCategory = '全部'
 
   async function loadStats(): Promise<void> {
     try {
@@ -21,18 +24,28 @@ export const useGalleryStore = defineStore('gallery', () => {
   }
 
   async function search(query = '', category = '全部', showError = true): Promise<void> {
+    lastQuery = query
+    lastCategory = category
+    const searchId = ++latestSearchId
     loading.value = true
     error.value = ''
     try {
-      items.value = (await getPublicGallery({ query, category })).items
+      const result = await getPublicGallery({ query, category })
+      if (searchId === latestSearchId) items.value = result.items
     }
     catch (cause) {
-      if (showError) error.value = cause instanceof Error ? cause.message : '公共画廊加载失败'
+      if (showError && searchId === latestSearchId) {
+        error.value = cause instanceof Error ? cause.message : '公共画廊加载失败'
+      }
     }
     finally {
-      loading.value = false
+      if (searchId === latestSearchId) loading.value = false
     }
   }
 
-  return { items, stats, loading, error, loadStats, search }
+  async function refresh(showError = false): Promise<void> {
+    await search(lastQuery, lastCategory, showError)
+  }
+
+  return { items, stats, loading, error, loadStats, search, refresh }
 })

@@ -5,6 +5,7 @@ commands.allow = [
   "image_directory",
   "take_migration_error",
   "set_image_directory",
+  "open_image_directory",
   "save_local_image",
   "delete_local_image",
 ]

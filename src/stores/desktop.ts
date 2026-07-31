@@ -190,6 +190,17 @@ export const useDesktopStore = defineStore('desktop', () => {
     }
   }
 
+  async function openImageDirectory(): Promise<void> {
+    if (!available) return
+    error.value = ''
+    try {
+      await invoke('open_image_directory')
+    }
+    catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '存放目录打开失败'
+    }
+  }
+
   function localImageUrl(image: GeneratedImage): string {
     return `https://lumora-local.localhost/${encodeURIComponent(image.id)}.${image.format}`
   }
@@ -257,6 +268,7 @@ export const useDesktopStore = defineStore('desktop', () => {
     checkForUpdates,
     startUpdateDownload,
     chooseImageDirectory,
+    openImageDirectory,
     prepareLocalImages,
     deleteLocalImage,
   }
