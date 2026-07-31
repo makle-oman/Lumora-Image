@@ -24,7 +24,7 @@ const generationStore = useGenerationStore()
 const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 
 const prompt = ref('')
-const selectedPureImage = ref<GeneratedImage | null>(null)
+const selectedPreview = ref<{ url: string; alt: string; downloadName?: string } | null>(null)
 const copiedId = ref<string | null>(null)
 const visibilityUpdatingId = ref<string | null>(null)
 
@@ -135,7 +135,15 @@ async function copyPromptText(id: string, text: string): Promise<void> {
 }
 
 function openPureImage(img: GeneratedImage): void {
-  selectedPureImage.value = img
+  selectedPreview.value = {
+    url: img.url,
+    alt: img.prompt,
+    downloadName: `lumora-${img.id}.png`,
+  }
+}
+
+function openReferenceImage(url: string, promptText: string): void {
+  selectedPreview.value = { url, alt: `参考图：${promptText}` }
 }
 
 function useSamplePrompt(p: string): void {
@@ -163,6 +171,20 @@ function useSamplePrompt(p: string): void {
         <div class="prompt-bubble">
           <span class="prompt-text">{{ task.prompt || '正在为你描绘创意...' }}</span>
           <span class="timestamp">{{ formatTime(task.createdAt) }}</span>
+        </div>
+
+        <div v-if="task.referenceImages.length" class="reference-image-row">
+          <span class="reference-image-label">参考图</span>
+          <button
+            v-for="(referenceUrl, index) in task.referenceImages"
+            :key="referenceUrl"
+            class="reference-image-button"
+            type="button"
+            :title="`查看参考图 ${index + 1}`"
+            @click="openReferenceImage(referenceUrl, task.prompt)"
+          >
+            <img :src="referenceUrl" :alt="`参考图 ${index + 1}`" />
+          </button>
         </div>
 
         <!-- Model Tag -->
@@ -218,6 +240,20 @@ function useSamplePrompt(p: string): void {
               <span>{{ copiedId === img.id ? '已复制' : '复制' }}</span>
             </button>
           </div>
+        </div>
+
+        <div v-if="img.referenceImages?.length" class="reference-image-row">
+          <span class="reference-image-label">参考图</span>
+          <button
+            v-for="(referenceUrl, index) in img.referenceImages"
+            :key="referenceUrl"
+            class="reference-image-button"
+            type="button"
+            :title="`查看参考图 ${index + 1}`"
+            @click="openReferenceImage(referenceUrl, img.prompt)"
+          >
+            <img :src="referenceUrl" :alt="`参考图 ${index + 1}`" />
+          </button>
         </div>
 
         <!-- Model Tag (✦ GPT-IMAGE-2) -->
@@ -329,31 +365,31 @@ function useSamplePrompt(p: string): void {
     <Teleport to="body">
       <Transition name="fade">
         <div
-          v-if="selectedPureImage"
+          v-if="selectedPreview"
           class="pure-lightbox-overlay"
-          @click.self="selectedPureImage = null"
+          @click.self="selectedPreview = null"
         >
           <button
             class="lightbox-close-btn"
             type="button"
             aria-label="关闭大图"
-            @click="selectedPureImage = null"
+            @click="selectedPreview = null"
           >
             <X :size="22" />
           </button>
 
           <div class="pure-lightbox-content">
             <img
-              :src="selectedPureImage.url"
-              :alt="selectedPureImage.prompt"
+              :src="selectedPreview.url"
+              :alt="selectedPreview.alt"
               class="pure-lightbox-img"
             />
 
-            <div v-if="!desktopStore.available" class="lightbox-bottom-bar">
+            <div v-if="!desktopStore.available && selectedPreview.downloadName" class="lightbox-bottom-bar">
               <a
                 class="lightbox-download-btn"
-                :href="selectedPureImage.url"
-                :download="`lumora-${selectedPureImage.id}.png`"
+                :href="selectedPreview.url"
+                :download="selectedPreview.downloadName"
                 target="_blank"
               >
                 <Download :size="15" />
@@ -466,6 +502,40 @@ function useSamplePrompt(p: string): void {
   flex-shrink: 0;
   color: #94a3b8;
   font-size: 11.5px;
+}
+
+.reference-image-row {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.reference-image-label {
+  margin-right: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reference-image-button {
+  display: block;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: #e2e8f0;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+}
+
+.reference-image-button img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* Hover Action Buttons inside Prompt Bubble */

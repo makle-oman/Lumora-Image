@@ -22,6 +22,7 @@ const image = {
   isPublic: false,
   category: '其他',
   storage: 'server',
+  referenceImages: ['/api/images/image-1/references/0'],
 }
 
 const task = {
@@ -30,6 +31,7 @@ const task = {
   prompt: 'test prompt',
   imageId: null,
   error: null,
+  referenceImages: ['/api/image-tasks/task-1/references/0'],
   createdAt: '2026-07-27T12:00:00Z',
   updatedAt: '2026-07-27T12:00:00Z',
 }
@@ -96,7 +98,10 @@ describe('image service', () => {
       items: [{ ...image, size: '1536x1024' }],
     })))
 
-    await expect(getImages()).resolves.toMatchObject([{ size: '1536x1024' }])
+    await expect(getImages()).resolves.toMatchObject([{
+      size: '1536x1024',
+      referenceImages: ['/api/images/image-1/references/0'],
+    }])
   })
 
   it('updates image visibility', async () => {

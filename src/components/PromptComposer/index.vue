@@ -37,6 +37,7 @@ const isPublic = ref(false)
 const selectedCount = ref(1)
 const referenceInput = ref<HTMLInputElement | null>(null)
 const references = ref<Array<{ id: string; file: File; url: string }>>([])
+const previewReference = ref<{ name: string; url: string } | null>(null)
 const batchEdit = ref(false)
 const promptHeight = ref(88)
 const minPromptHeight = 88
@@ -196,6 +197,7 @@ function pasteReferenceImages(event: ClipboardEvent): void {
 
 function removeReference(id: string): void {
   const reference = references.value.find(item => item.id === id)
+  if (previewReference.value?.url === reference?.url) previewReference.value = null
   if (reference) URL.revokeObjectURL(reference.url)
   references.value = references.value.filter(item => item.id !== id)
   if (!references.value.length) batchEdit.value = false
@@ -294,12 +296,45 @@ function stopPromptResize(event: PointerEvent): void {
 
     <div v-if="references.length" class="reference-strip">
       <div v-for="reference in references" :key="reference.id" class="reference-item">
-        <img :src="reference.url" :alt="reference.file.name" />
-        <button type="button" :title="`移除 ${reference.file.name}`" @click="removeReference(reference.id)">
+        <button
+          class="reference-preview-button"
+          type="button"
+          :title="`查看 ${reference.file.name}`"
+          @click="previewReference = { name: reference.file.name, url: reference.url }"
+        >
+          <img :src="reference.url" :alt="reference.file.name" />
+        </button>
+        <button
+          class="reference-remove-button"
+          type="button"
+          :title="`移除 ${reference.file.name}`"
+          @click.stop="removeReference(reference.id)"
+        >
           <X :size="12" />
         </button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition name="message-fade">
+        <div
+          v-if="previewReference"
+          class="reference-preview-overlay"
+          @click.self="previewReference = null"
+        >
+          <button
+            class="reference-preview-close"
+            type="button"
+            title="关闭预览"
+            aria-label="关闭预览"
+            @click="previewReference = null"
+          >
+            <X :size="20" />
+          </button>
+          <img :src="previewReference.url" :alt="previewReference.name" />
+        </div>
+      </Transition>
+    </Teleport>
 
     <div class="composer-controls">
       <div class="model-options">
@@ -481,7 +516,8 @@ function stopPromptResize(event: PointerEvent): void {
 .reference-strip {
   display: flex;
   gap: 8px;
-  padding: 0 20px 12px 76px;
+  padding: 8px 20px 12px 76px;
+  margin-top: -8px;
   overflow-x: auto;
 }
 
@@ -492,7 +528,19 @@ function stopPromptResize(event: PointerEvent): void {
   flex: 0 0 58px;
 }
 
-.reference-item img {
+.reference-preview-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  cursor: zoom-in;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.reference-preview-button img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -500,10 +548,11 @@ function stopPromptResize(event: PointerEvent): void {
   border-radius: 8px;
 }
 
-.reference-item button {
+.reference-remove-button {
   position: absolute;
   top: -6px;
   right: -6px;
+  z-index: 2;
   display: grid;
   width: 20px;
   height: 20px;
@@ -513,6 +562,41 @@ function stopPromptResize(event: PointerEvent): void {
   cursor: pointer;
   background: #18181b;
   border: 2px solid #ffffff;
+  border-radius: 50%;
+}
+
+.reference-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 48px;
+  background: rgba(10, 10, 14, 0.82);
+  backdrop-filter: blur(16px);
+}
+
+.reference-preview-overlay img {
+  max-width: min(1100px, 92vw);
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.reference-preview-close {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  color: #ffffff;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
 }
 

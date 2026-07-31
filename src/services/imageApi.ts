@@ -25,6 +25,7 @@ const GeneratedImageSchema = z.object({
   category: z.string(),
   storage: z.enum(['server', 'pending', 'local']),
   author: z.string().optional(),
+  referenceImages: z.array(z.string().min(1)).default([]),
 })
 
 const HealthResponseSchema = z.object({
@@ -40,6 +41,7 @@ const GenerationTaskSchema = z.object({
   prompt: z.string(),
   imageId: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
+  referenceImages: z.array(z.string().min(1)).default([]),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 })

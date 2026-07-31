@@ -22,6 +22,7 @@ export type GeneratedImage = Readonly<{
   category: string
   storage: 'server' | 'pending' | 'local'
   author?: string
+  referenceImages?: ReadonlyArray<string>
 }>
 
 export type GenerationRequestState =
