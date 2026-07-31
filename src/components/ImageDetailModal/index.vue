@@ -213,7 +213,6 @@ function formatDate(dateStr?: string): string {
   background: #28282c;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 16px;
-  scrollbar-width: thin;
 }
 
 .prompt-box-header {

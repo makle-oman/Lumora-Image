@@ -91,7 +91,6 @@ onMounted(() => void Promise.all([
 .home-view {
   height: 100%;
   overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .home-hero {

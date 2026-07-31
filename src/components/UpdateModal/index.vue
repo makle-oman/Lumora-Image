@@ -273,7 +273,6 @@ function handleStartUpdate() {
 .changelog-scroll {
   max-height: 180px;
   overflow-y: auto;
-  scrollbar-width: thin;
   padding-right: 6px;
   display: flex;
   flex-direction: column;
