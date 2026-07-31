@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   getUsage: vi.fn(),
   reportHeartbeat: vi.fn(),
   revokeApiKey: vi.fn(),
+  sendRegistrationCode: vi.fn(),
   updateProfile: vi.fn(),
 }))
 

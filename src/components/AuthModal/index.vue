@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { CheckCircle2, Eye, EyeOff, Lock, Mail, Sparkles, X } from 'lucide-vue-next'
+import { onUnmounted, ref } from 'vue'
+import { CheckCircle2, Eye, EyeOff, Lock, Mail, Send, Sparkles, X } from 'lucide-vue-next'
 import { useGenerationStore } from '../../stores/generation'
 import { useUserStore } from '../../stores/user'
 
@@ -9,15 +9,64 @@ const generationStore = useGenerationStore()
 const mode = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
+const verificationCode = ref('')
 const showPassword = ref(false)
 const isSuccess = ref(false)
 const isSubmitting = ref(false)
+const isSendingCode = ref(false)
+const codeCooldown = ref(0)
+const codeSentTo = ref('')
+const formError = ref('')
+const codeStatus = ref('')
+let codeTimer: ReturnType<typeof setInterval> | null = null
+
+function startCodeCooldown(): void {
+  if (codeTimer) clearInterval(codeTimer)
+  codeCooldown.value = 60
+  codeTimer = setInterval(() => {
+    codeCooldown.value -= 1
+    if (codeCooldown.value <= 0 && codeTimer) {
+      clearInterval(codeTimer)
+      codeTimer = null
+    }
+  }, 1000)
+}
+
+async function handleSendCode(): Promise<void> {
+  const normalizedEmail = email.value.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    formError.value = '请输入有效的邮箱地址'
+    return
+  }
+  if (isSendingCode.value || (codeCooldown.value > 0 && codeSentTo.value === normalizedEmail)) return
+
+  formError.value = ''
+  codeStatus.value = ''
+  isSendingCode.value = true
+  try {
+    await userStore.sendRegistrationCode(normalizedEmail)
+    codeSentTo.value = normalizedEmail
+    codeStatus.value = '验证码已发送，请检查邮箱'
+    startCodeCooldown()
+  }
+  catch {
+    codeStatus.value = ''
+  }
+  finally {
+    isSendingCode.value = false
+  }
+}
 
 async function handleSubmit(): Promise<void> {
   if (!email.value || !password.value || isSubmitting.value) return
+  if (mode.value === 'register' && !/^\d{6}$/.test(verificationCode.value)) {
+    formError.value = '请输入 6 位邮箱验证码'
+    return
+  }
+  formError.value = ''
   isSubmitting.value = true
   try {
-    await userStore.authenticate(mode.value, email.value, password.value)
+    await userStore.authenticate(mode.value, email.value, password.value, verificationCode.value)
     await generationStore.resumeTasks()
     await Promise.all([
       generationStore.loadImages(),
@@ -36,6 +85,10 @@ async function handleSubmit(): Promise<void> {
     isSubmitting.value = false
   }
 }
+
+onUnmounted(() => {
+  if (codeTimer) clearInterval(codeTimer)
+})
 </script>
 
 <template>
@@ -71,6 +124,7 @@ async function handleSubmit(): Promise<void> {
                   id="auth-email"
                   v-model="email"
                   type="email"
+                  autocomplete="email"
                   placeholder="your.name@domain.com"
                   required
                 />
@@ -87,6 +141,35 @@ async function handleSubmit(): Promise<void> {
               </div>
             </div>
 
+            <div v-if="mode === 'register'" class="form-group">
+              <label for="auth-code">邮箱验证码</label>
+              <div class="input-wrap code-input-wrap">
+                <Mail :size="17" />
+                <input
+                  id="auth-code"
+                  v-model="verificationCode"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  maxlength="6"
+                  pattern="[0-9]{6}"
+                  placeholder="6 位验证码"
+                  required
+                  @input="verificationCode = verificationCode.replace(/\D/g, '').slice(0, 6)"
+                />
+                <button
+                  class="code-send-btn"
+                  type="button"
+                  :disabled="isSendingCode || (codeCooldown > 0 && codeSentTo === email.trim().toLowerCase())"
+                  @click="handleSendCode"
+                >
+                  <Send :size="14" />
+                  <span>{{ isSendingCode ? '发送中' : codeCooldown > 0 && codeSentTo === email.trim().toLowerCase() ? `${codeCooldown}s` : '发送验证码' }}</span>
+                </button>
+              </div>
+              <p v-if="codeStatus" class="code-status">{{ codeStatus }}</p>
+            </div>
+
             <div class="form-group">
               <label for="auth-password">密码</label>
               <div class="input-wrap">
@@ -95,6 +178,8 @@ async function handleSubmit(): Promise<void> {
                   id="auth-password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
+                  :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+                  minlength="8"
                   placeholder="••••••••"
                   required
                 />
@@ -111,7 +196,7 @@ async function handleSubmit(): Promise<void> {
               </div>
             </div>
 
-            <p v-if="userStore.authError" class="auth-error">{{ userStore.authError }}</p>
+            <p v-if="formError || userStore.authError" class="auth-error">{{ formError || userStore.authError }}</p>
 
             <button class="submit-btn" type="submit" :disabled="isSubmitting">
               <span>{{ isSubmitting ? '提交中...' : mode === 'login' ? '立即登录' : '创建账号' }}</span>
@@ -271,6 +356,38 @@ async function handleSubmit(): Promise<void> {
 .field-action:hover {
   color: #18181b;
   background: #f4f4f5;
+}
+
+.code-input-wrap {
+  padding-right: 6px;
+}
+
+.code-send-btn {
+  display: inline-flex;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: #18181b;
+  border: 0;
+  border-radius: 8px;
+}
+
+.code-send-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.code-status {
+  margin: 0;
+  color: #15803d;
+  font-size: 12px;
 }
 
 .submit-btn {

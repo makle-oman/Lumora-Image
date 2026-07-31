@@ -15,6 +15,7 @@ import {
   getUsage,
   reportHeartbeat,
   revokeApiKey as revokeApiKeyRequest,
+  sendRegistrationCode as sendRegistrationCodeRequest,
   updateProfile as updateProfileRequest,
   type AnnouncementItem,
   type ApiKeyItem,
@@ -172,10 +173,26 @@ export const useUserStore = defineStore('user', () => {
     if (isProfileModalOpen.value) operationError.value = ''
   }
 
-  async function authenticate(mode: 'login' | 'register', email: string, password: string): Promise<void> {
+  async function sendRegistrationCode(email: string): Promise<void> {
     authError.value = ''
     try {
-      user.value = await authenticateRequest(mode, email, password)
+      await sendRegistrationCodeRequest(email)
+    }
+    catch (error) {
+      authError.value = error instanceof Error ? error.message : '验证码发送失败'
+      throw error
+    }
+  }
+
+  async function authenticate(
+    mode: 'login' | 'register',
+    email: string,
+    password: string,
+    verificationCode?: string,
+  ): Promise<void> {
+    authError.value = ''
+    try {
+      user.value = await authenticateRequest(mode, email, password, verificationCode)
       isLoggedIn.value = true
       startHeartbeat()
       await loadAccountData()
@@ -327,6 +344,7 @@ export const useUserStore = defineStore('user', () => {
     toggleAuthModal,
     toggleNoticeModal,
     toggleProfileModal,
+    sendRegistrationCode,
     authenticate,
     logout,
     updateProfile,

@@ -81,11 +81,24 @@ export async function getSession(): Promise<UserProfile | null> {
   return requestJson('/api/session', UserProfileSchema.nullable())
 }
 
-export async function authenticate(mode: 'login' | 'register', email: string, password: string): Promise<UserProfile> {
+export async function sendRegistrationCode(email: string): Promise<void> {
+  await requestJson('/api/auth/email-code', z.null(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function authenticate(
+  mode: 'login' | 'register',
+  email: string,
+  password: string,
+  verificationCode?: string,
+): Promise<UserProfile> {
   return requestJson(`/api/auth/${mode}`, UserProfileSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(mode === 'register' ? { email, password, verificationCode } : { email, password }),
   })
 }
 
