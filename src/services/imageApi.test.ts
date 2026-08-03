@@ -94,6 +94,16 @@ describe('image service', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain(encodeURIComponent('海报插画'))
   })
 
+  it('passes 4K output dimensions to generation requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({ items: [task] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await generateImage({ prompt: '4K poster', size: '4096x6144' })
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>
+    expect(body.size).toBe('4096x6144')
+  })
+
   it('accepts flexible GPT Image 2 sizes in creation history', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({
       items: [{ ...image, size: '1536x1024' }],

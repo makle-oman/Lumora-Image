@@ -117,7 +117,7 @@ describe('desktop store', () => {
     expect(relaunch).toHaveBeenCalledOnce()
   })
 
-  it('downloads pending images locally and confirms server cleanup', async () => {
+  it('archives server images locally on desktop', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -146,7 +146,7 @@ describe('desktop store', () => {
       format: 'png',
       isPublic: true,
       category: '其他',
-      storage: 'pending',
+      storage: 'server',
     }])
 
     expect(images[0]).toMatchObject({ storage: 'local', isPublic: true })

@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
 import { confirmImageLocalized } from '../services/imageApi'
 import type { GeneratedImage } from '../types/generation'
+import { useMessageStore } from './message'
 
 export interface ReleaseNoteItem {
   category: 'release'
@@ -21,6 +22,7 @@ export interface UpdateInfo {
 }
 
 export const useDesktopStore = defineStore('desktop', () => {
+  const messageStore = useMessageStore()
   const available = isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1'
   const version = __APP_VERSION__
   const imageDirectory = ref('C:\\Users\\Administrator\\Pictures\\Lumora')
@@ -209,10 +211,6 @@ export const useDesktopStore = defineStore('desktop', () => {
     if (!available) return items
     const prepared: GeneratedImage[] = []
     for (const image of items) {
-      if (image.storage === 'server') {
-        prepared.push(image)
-        continue
-      }
       if (image.storage === 'local') {
         prepared.push({ ...image, url: localImageUrl(image) })
         continue
@@ -231,6 +229,7 @@ export const useDesktopStore = defineStore('desktop', () => {
       }
       catch (cause) {
         error.value = cause instanceof Error ? cause.message : '图片本地保存失败'
+        messageStore.show(`图片本地保存失败：${error.value}`, 'error')
         prepared.push(image)
       }
     }
@@ -244,6 +243,7 @@ export const useDesktopStore = defineStore('desktop', () => {
     }
     catch (cause) {
       error.value = cause instanceof Error ? cause.message : '本地图片删除失败'
+      messageStore.show(error.value, 'error')
     }
   }
 

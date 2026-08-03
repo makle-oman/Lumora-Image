@@ -16,11 +16,13 @@ import { storeToRefs } from 'pinia'
 import PromptComposer from '../../components/PromptComposer/index.vue'
 import { useDesktopStore } from '../../stores/desktop'
 import { useGenerationStore } from '../../stores/generation'
+import { useMessageStore } from '../../stores/message'
 import type { GeneratedImage } from '../../types/generation'
 
 const route = useRoute()
 const desktopStore = useDesktopStore()
 const generationStore = useGenerationStore()
+const messageStore = useMessageStore()
 const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 
 const prompt = ref('')
@@ -126,11 +128,13 @@ async function copyPromptText(id: string, text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
     copiedId.value = id
+    messageStore.show('提示词已复制', 'success')
     setTimeout(() => {
       copiedId.value = null
     }, 2000)
   } catch {
     // fallback
+    messageStore.show('提示词复制失败', 'error')
   }
 }
 

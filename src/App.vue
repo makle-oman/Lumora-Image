@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AmbientScene from './components/AmbientScene/index.vue'
+import AppMessage from './components/AppMessage/index.vue'
 import AppSidebar from './components/AppSidebar/index.vue'
 import AuthModal from './components/AuthModal/index.vue'
 import DesktopStorageModal from './components/DesktopStorageModal/index.vue'
@@ -26,6 +27,7 @@ import UpdateModal from './components/UpdateModal/index.vue'
     <ProfileModal />
     <DesktopStorageModal />
     <UpdateModal />
+    <AppMessage />
   </div>
 </template>
 

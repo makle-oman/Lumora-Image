@@ -15,6 +15,7 @@ import {
 import { ApiError } from '../services/http'
 import { useDesktopStore } from './desktop'
 import { useGalleryStore } from './gallery'
+import { useMessageStore } from './message'
 import { useUserStore } from './user'
 import type {
   ApiStatus,
@@ -24,6 +25,7 @@ import type {
 } from '../types/generation'
 
 export const useGenerationStore = defineStore('generation', () => {
+  const messageStore = useMessageStore()
   const images = ref<ReadonlyArray<GeneratedImage>>([])
   const activeTasks = ref<GenerationTask[]>([])
   const requestState = ref<GenerationRequestState>({ status: 'idle' })
@@ -77,6 +79,7 @@ export const useGenerationStore = defineStore('generation', () => {
       const tasks = await generateImage(request)
       await applyTaskUpdates(tasks)
       apiStatus.value = 'ready'
+      messageStore.show('生成请求已提交', 'info')
       schedulePolling(500)
     }
     catch (error) {
@@ -89,6 +92,7 @@ export const useGenerationStore = defineStore('generation', () => {
         status: 'error',
         message: error instanceof Error ? error.message : '图片生成失败',
       }
+      messageStore.show(requestState.value.message, 'error')
     }
     finally {
       isSubmitting.value = false
@@ -140,6 +144,7 @@ export const useGenerationStore = defineStore('generation', () => {
         status: 'error',
         message: failures.map(task => task.error || '图片生成失败').join('；'),
       }
+      messageStore.show(requestState.value.message, 'error')
     }
     else if (!pending.length) {
       requestState.value = {
@@ -148,6 +153,7 @@ export const useGenerationStore = defineStore('generation', () => {
           .map(task => task.imageId)
           .filter((id): id is string => Boolean(id)),
       }
+      messageStore.show('图片生成完成', 'success')
     }
   }
 
@@ -227,6 +233,7 @@ export const useGenerationStore = defineStore('generation', () => {
         image.id === updated.id ? { ...image, isPublic: updated.isPublic } : image
       ))
       await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
+      messageStore.show(updated.isPublic ? '图片已公开' : '已取消公开', 'success')
       return true
     }
     catch (error) {
@@ -234,6 +241,7 @@ export const useGenerationStore = defineStore('generation', () => {
         status: 'error',
         message: error instanceof Error ? error.message : '图片公开状态更新失败',
       }
+      messageStore.show(requestState.value.message, 'error')
       return false
     }
   }

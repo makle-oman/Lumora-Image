@@ -71,6 +71,12 @@ const aspectRatios: AspectRatioOption[] = [
 ]
 
 const selectedRatioId = ref('auto')
+const selectedResolution = ref<1 | 2 | 4>(1)
+const resolutionOptions = [
+  { value: 1, label: '1K', hint: '标准' },
+  { value: 2, label: '2K', hint: '高清' },
+  { value: 4, label: '4K', hint: '超清' },
+] as const
 const countOptions = [
   { count: 1, cost: '1 积分' },
   { count: 2, cost: '2 积分' },
@@ -82,13 +88,25 @@ const currentRatioLabel = computed(() => (
   aspectRatios.find(option => option.id === selectedRatioId.value)?.label ?? '智能'
 ))
 
+function updateImageSize(): void {
+  const baseSize = aspectRatios.find(option => option.id === selectedRatioId.value)?.sizeValue ?? '1024x1024'
+  const [width = 1024, height = 1024] = baseSize.split('x').map(Number)
+  size.value = `${width * selectedResolution.value}x${height * selectedResolution.value}`
+}
+
 function selectRatio(option: AspectRatioOption): void {
   selectedRatioId.value = option.id
-  size.value = option.sizeValue
+  updateImageSize()
+}
+
+function selectResolution(value: 1 | 2 | 4): void {
+  selectedResolution.value = value
+  updateImageSize()
 }
 
 function resetDefaults(): void {
   selectedRatioId.value = 'auto'
+  selectedResolution.value = 1
   size.value = '1024x1024'
   selectedCount.value = 1
 }
@@ -163,6 +181,10 @@ function submit(): void {
   clearMessage()
   emit('generate', request)
   prompt.value = ''
+  for (const reference of references.value) URL.revokeObjectURL(reference.url)
+  references.value = []
+  previewReference.value = null
+  batchEdit.value = false
 }
 
 function addReferenceImages(files: File[]): void {
@@ -357,6 +379,8 @@ function stopPromptResize(event: PointerEvent): void {
               <Grid2X2 :size="13" :stroke-width="2" class="param-icon" />
               <span>{{ currentRatioLabel }}</span>
               <span class="divider">•</span>
+              <span>{{ selectedResolution }}K</span>
+              <span class="divider">•</span>
               <span>{{ selectedCount }} 张</span>
             </div>
             <ChevronDown
@@ -417,6 +441,25 @@ function stopPromptResize(event: PointerEvent): void {
                     </div>
                   </button>
                 </div>
+
+                <div class="section-label-row resolution-label-row">
+                  <span class="section-label">输出清晰度</span>
+                  <span class="section-hint">选择最终图片尺寸</span>
+                </div>
+
+                <div class="count-segments">
+                  <button
+                    v-for="item in resolutionOptions"
+                    :key="item.value"
+                    type="button"
+                    class="count-segment-btn"
+                    :class="{ active: selectedResolution === item.value }"
+                    @click="selectResolution(item.value)"
+                  >
+                    <span class="count-num">{{ item.label }}</span>
+                    <span class="cost-tag">{{ item.hint }}</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Section 2: Generation Batch Count -->
@@ -443,7 +486,7 @@ function stopPromptResize(event: PointerEvent): void {
 
               <!-- Popover Footer Action -->
               <div class="popover-footer">
-                <span class="footer-tip">已选 <strong>{{ currentRatioLabel }}</strong> 比例 · <strong>{{ selectedCount }}</strong> 张输出</span>
+                <span class="footer-tip">已选 <strong>{{ currentRatioLabel }}</strong> 比例 · <strong>{{ selectedResolution }}K</strong> · <strong>{{ selectedCount }}</strong> 张输出</span>
                 <button
                   class="done-btn"
                   type="button"
@@ -958,6 +1001,10 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
+}
+
+.resolution-label-row {
+  margin-top: 16px;
 }
 
 .count-segment-btn {
