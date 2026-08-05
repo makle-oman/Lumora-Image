@@ -74,4 +74,30 @@ describe('user store refresh', () => {
 
     expect(store.user.name).toBe('Updated name')
   })
+
+  it('returns true and refreshes providers after activation', async () => {
+    api.getProviders.mockResolvedValue([{
+      id: 'provider-1',
+      name: 'Primary',
+      baseUrl: 'https://api.openai.com',
+      maskedApiKey: 'sk-***',
+      model: 'gpt-image-2',
+      isActive: true,
+      createdAt: '2026-08-05T00:00:00+00:00',
+      needsRotation: false,
+    }])
+    const store = useUserStore()
+
+    await expect(store.activateProvider('provider-1')).resolves.toBe(true)
+    expect(api.activateProvider).toHaveBeenCalledWith('provider-1')
+    expect(store.providers[0]?.isActive).toBe(true)
+  })
+
+  it('returns false when a provider cannot be activated', async () => {
+    api.activateProvider.mockRejectedValue(new Error('调用方不可用'))
+    const store = useUserStore()
+
+    await expect(store.activateProvider('provider-1')).resolves.toBe(false)
+    expect(store.operationError).toBe('调用方不可用')
+  })
 })

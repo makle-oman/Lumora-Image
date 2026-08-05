@@ -44,6 +44,15 @@ jobs:
         run: pnpm desktop:prepare
         working-directory: lumora-image-studio
 
+      - name: Load release notes
+        id: release_notes
+        shell: pwsh
+        working-directory: lumora-image-studio
+        run: |
+          "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Get-Content -Raw RELEASE_NOTES.md | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Build and create draft release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -53,7 +62,8 @@ jobs:
           projectPath: lumora-image-studio
           tagName: v__VERSION__
           releaseName: Lumora Image v__VERSION__
-          generateReleaseNotes: true
+          releaseBody: ${{ steps.release_notes.outputs.body }}
+          generateReleaseNotes: false
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true

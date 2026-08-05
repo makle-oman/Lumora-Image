@@ -33,7 +33,7 @@ async function copyPath() {
 
 <template>
   <Teleport to="body">
-    <Transition name="storage-fade">
+    <Transition name="modal-fade">
       <div
         v-if="desktopStore.isStorageModalOpen"
         class="storage-backdrop"
@@ -159,9 +159,9 @@ async function copyPath() {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .storage-modal {
@@ -514,14 +514,13 @@ async function copyPath() {
 }
 
 /* Transition Animations */
-.storage-fade-enter-active,
-.storage-fade-leave-active {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 160ms ease;
 }
 
-.storage-fade-enter-from,
-.storage-fade-leave-to {
+.modal-fade-enter-from,
+.modal-fade-leave-to {
   opacity: 0;
-  transform: scale(0.92) translateY(10px);
 }
 </style>

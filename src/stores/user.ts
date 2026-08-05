@@ -270,14 +270,16 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function activateProvider(id: string): Promise<void> {
+  async function activateProvider(id: string): Promise<boolean> {
     operationError.value = ''
     try {
       await activateProviderRequest(id)
       providers.value = await getProviders()
+      return true
     }
     catch (error) {
       operationError.value = error instanceof Error ? error.message : '调用方启用失败'
+      return false
     }
   }
 

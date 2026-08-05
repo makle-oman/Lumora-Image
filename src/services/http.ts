@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { isTauri } from '@tauri-apps/api/core'
 
 const deviceIdKey = 'lumora:device-id'
-const remoteServiceOrigin = 'https://makle.cloud'
+const defaultRemoteServiceOrigin = normalizeServiceOrigin(import.meta.env.VITE_LUMORA_SERVICE_ORIGIN) ?? 'https://makle.cloud'
 
 const ApiResponseSchema = z.object({
   code: z.number().int(),
@@ -21,9 +21,22 @@ function isDesktopClient(): boolean {
   return isTauri() || new URLSearchParams(globalThis.location?.search).get('lumora-desktop') === '1'
 }
 
+function normalizeServiceOrigin(value: string | undefined): string | null {
+  if (!value?.trim()) return null
+  try {
+    const url = new URL(value.trim())
+    const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)
+    if ((!localHttp && url.protocol !== 'https:') || url.pathname !== '/' || url.search || url.hash) return null
+    return url.origin
+  }
+  catch {
+    return null
+  }
+}
+
 export function resolveServiceUrl(path: string): string {
   if (!isDesktopClient() || !/^\/(?:api|public|v1)(?:\/|$)/.test(path)) return path
-  return `${remoteServiceOrigin}${path}`
+  return `${defaultRemoteServiceOrigin}${path}`
 }
 
 export async function readJson(response: Response): Promise<unknown> {

@@ -240,7 +240,9 @@ function startPromptResize(event: PointerEvent): void {
   isResizing = true
   resizeStartY = event.clientY
   resizeStartHeight = promptHeight.value
-  event.currentTarget instanceof HTMLElement && event.currentTarget.setPointerCapture(event.pointerId)
+  if (event.currentTarget instanceof HTMLElement) {
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
 }
 
 function resizePrompt(event: PointerEvent): void {

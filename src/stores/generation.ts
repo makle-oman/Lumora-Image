@@ -33,6 +33,8 @@ export const useGenerationStore = defineStore('generation', () => {
   const isSubmitting = ref(false)
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let pollInFlight = false
+  let pollAttempt = 0
+  const pollingDelays = [1000, 2000, 3000, 5000] as const
 
   const activePrompt = computed(() => activeTasks.value[0]?.prompt ?? '')
   const isLoading = computed(() => isSubmitting.value || activeTasks.value.length > 0)
@@ -80,7 +82,7 @@ export const useGenerationStore = defineStore('generation', () => {
       await applyTaskUpdates(tasks)
       apiStatus.value = 'ready'
       messageStore.show('生成请求已提交', 'info')
-      schedulePolling(500)
+      startPolling()
     }
     catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -106,7 +108,7 @@ export const useGenerationStore = defineStore('generation', () => {
         .filter(task => task.status === 'queued' || task.status === 'running')
       if (activeTasks.value.length) {
         requestState.value = { status: 'loading' }
-        schedulePolling(250)
+        startPolling()
       }
     }
     catch (error) {
@@ -182,16 +184,24 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   }
 
-  function schedulePolling(delay = 1000): void {
+  function startPolling(): void {
+    pollAttempt = 0
+    schedulePolling()
+  }
+
+  function schedulePolling(delay?: number): void {
     if (pollTimer) clearTimeout(pollTimer)
     pollTimer = null
     if (!activeTasks.value.length) return
-    pollTimer = setTimeout(() => void pollTasks(), delay)
+    const nextDelay = delay ?? pollingDelays[Math.min(pollAttempt, pollingDelays.length - 1)]
+    pollAttempt += 1
+    pollTimer = setTimeout(() => void pollTasks(), nextDelay)
   }
 
   function stopPolling(): void {
     if (pollTimer) clearTimeout(pollTimer)
     pollTimer = null
+    pollAttempt = 0
   }
 
   async function removeImage(id: string): Promise<void> {

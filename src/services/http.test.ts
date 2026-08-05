@@ -1,6 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { ApiError, requestJson, resolveServiceUrl } from './http'
+
+const storage = new Map<string, string>()
+
+beforeEach(() => {
+  storage.clear()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string): string | null => storage.get(key) ?? null,
+    setItem: (key: string, value: string): void => { storage.set(key, value) },
+    removeItem: (key: string): void => { storage.delete(key) },
+  })
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()

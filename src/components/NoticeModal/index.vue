@@ -7,7 +7,7 @@ const userStore = useUserStore()
 
 <template>
   <Teleport to="body">
-    <Transition name="fade">
+    <Transition name="modal-fade">
       <div v-if="userStore.isNoticeModalOpen" class="modal-backdrop" @click.self="userStore.toggleNoticeModal(false)">
         <div class="modal-card" role="dialog" aria-labelledby="notice-title">
           <header class="modal-header">
@@ -66,8 +66,9 @@ const userStore = useUserStore()
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .modal-card {
@@ -238,13 +239,13 @@ time {
   opacity: 0.9;
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 200ms ease;
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 160ms ease;
 }
 
-.fade-enter-from,
-.fade-leave-to {
+.modal-fade-enter-from,
+.modal-fade-leave-to {
   opacity: 0;
 }
 </style>

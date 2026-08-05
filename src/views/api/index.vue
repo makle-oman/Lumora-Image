@@ -12,11 +12,13 @@ import {
 } from 'lucide-vue-next'
 import { useUserStore } from '../../stores/user'
 import { useGenerationStore } from '../../stores/generation'
+import { useMessageStore } from '../../stores/message'
 import { resolveServiceUrl } from '../../services/http'
 import CopyCodeBlock from './components/CopyCodeBlock/index.vue'
 
 const userStore = useUserStore()
 const generationStore = useGenerationStore()
+const messageStore = useMessageStore()
 const copiedKeyId = ref('')
 const copiedText = ref('')
 const activeSubNav = ref<'overview' | 'keys' | 'logs' | 'docs'>('overview')
@@ -79,8 +81,13 @@ async function handleCreateProvider(): Promise<void> {
 }
 
 async function handleActivateProvider(id: string): Promise<void> {
-  await userStore.activateProvider(id)
+  const providerName = userStore.providers.find(provider => provider.id === id)?.name
+  if (!await userStore.activateProvider(id)) {
+    messageStore.show(userStore.operationError || '调用方启用失败', 'error')
+    return
+  }
   await generationStore.checkConfiguration()
+  messageStore.show(providerName ? `已切换为 ${providerName}` : '调用方已启用', 'success')
 }
 
 async function handleDeleteProvider(id: string): Promise<void> {

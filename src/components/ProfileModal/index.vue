@@ -107,7 +107,7 @@ async function handleSubmit(): Promise<void> {
       closeModal()
     }, 1200)
   }
-  catch (err: any) {
+  catch {
     // Error is set in userStore.operationError
   }
   finally {

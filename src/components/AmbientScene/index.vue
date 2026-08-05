@@ -240,14 +240,14 @@ onMounted(() => {
 })
 
 // Helper Class
-import { Scene as ThreeScene } from 'three'
+import { Object3D, Scene as ThreeScene } from 'three'
 class THREE_Scene_Helper {
   private scene: ThreeScene
   constructor() {
     this.scene = new ThreeScene()
     this.scene.background = new Color(0xffffff)
   }
-  add(object: any) {
+  add(object: Object3D) {
     this.scene.add(object)
   }
   getScene() {
