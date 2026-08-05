@@ -24,7 +24,7 @@ const userStore = useUserStore()
 const desktopStore = useDesktopStore()
 
 // Version & Environment Info
-const appVersion = computed(() => desktopStore.version || '1.0.11')
+const appVersion = computed(() => desktopStore.version || '1.0.12')
 const platformType = computed(() => desktopStore.available ? 'Desktop App (Tauri)' : 'Web Application')
 
 // Update Checking State

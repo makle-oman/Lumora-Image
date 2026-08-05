@@ -152,6 +152,7 @@ describe('desktop store', () => {
     expect(images[0]).toMatchObject({ storage: 'local', isPublic: true })
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/images/img-0123456789abcdef0123456789abcdef/file', {
       cache: 'no-store',
+      credentials: 'include',
     })
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://makle.cloud/api/images/img-0123456789abcdef0123456789abcdef/local', expect.objectContaining({
       method: 'POST',

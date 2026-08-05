@@ -216,7 +216,7 @@ export const useDesktopStore = defineStore('desktop', () => {
         continue
       }
       try {
-        const response = await fetch(image.url, { cache: 'no-store' })
+        const response = await fetch(image.url, { cache: 'no-store', credentials: 'include' })
         if (!response.ok) throw new Error(`图片下载失败: ${response.status}`)
         const url = await invoke<string>('save_local_image', new Uint8Array(await response.arrayBuffer()), {
           headers: {
