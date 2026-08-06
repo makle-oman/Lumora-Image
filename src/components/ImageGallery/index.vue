@@ -67,7 +67,8 @@ function updateAllShowcaseCards(): void {
   galleryRoot.value?.querySelectorAll<HTMLElement>('.prompt-card').forEach(updateShowcaseCard)
 }
 
-function handleImageLoad(event: Event): void {
+function handleImageLoad(event: Event, id: string): void {
+  loadedImageIds.value.add(id)
   if (props.mode !== 'showcase') return
   const card = (event.currentTarget as HTMLImageElement).closest<HTMLElement>('.prompt-card')
   if (card) updateShowcaseCard(card)
@@ -90,12 +91,10 @@ onUnmounted(() => {
 })
 
 watch(() => props.selectedCategory, () => {
-  triggerAllTransitions()
   void nextTick(updateAllShowcaseCards)
 })
 
 watch(() => props.items, () => {
-  triggerAllTransitions()
   void nextTick(updateAllShowcaseCards)
 })
 
@@ -150,18 +149,20 @@ function removeImage(id: string): void {
         :key="item.id"
         class="prompt-card"
         :class="{ 'is-showcase': mode === 'showcase' }"
-        :style="{ animationDelay: `${0.05 + idx * 0.05}s` }"
+        :style="{ animationDelay: `${0.05 + Math.min(idx, 7) * 0.05}s` }"
         @click="openDetail(item)"
       >
         <!-- Card Image Thumbnail with Grid Overlay fading out on color load -->
         <div class="image-wrapper">
           <img
-            :src="item.url"
+            :src="item.thumbnailUrl"
             :alt="item.prompt"
             loading="lazy"
+            decoding="async"
+            fetchpriority="low"
             class="image-thumb"
             :class="{ 'is-loaded': loadedImageIds.has(item.id) }"
-            @load="handleImageLoad"
+            @load="handleImageLoad($event, item.id)"
           />
           <div
             class="grid-overlay"
@@ -335,7 +336,7 @@ function removeImage(id: string): void {
   background-size: 24px 24px;
   opacity: 0.75;
   z-index: 1;
-  transition: opacity 1600ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 250ms ease;
 }
 
 .grid-overlay.is-hidden {
@@ -351,9 +352,9 @@ function removeImage(id: string): void {
   filter: grayscale(100%) brightness(0.85) contrast(0.95);
   opacity: 0.7;
   transform: scale(0.97);
-  transition: filter 1600ms cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 1600ms cubic-bezier(0.16, 1, 0.3, 1),
-              transform 1600ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: filter 250ms ease,
+              opacity 250ms ease,
+              transform 250ms ease;
 }
 
 .image-thumb.is-loaded {

@@ -16,6 +16,7 @@ const ImageUrlSchema = z.string().min(1).transform(resolveServiceUrl)
 const GeneratedImageSchema = z.object({
   id: z.string().min(1),
   url: ImageUrlSchema,
+  thumbnailUrl: ImageUrlSchema,
   prompt: z.string(),
   size: ImageSizeSchema,
   model: z.literal('gpt-image-2'),
@@ -39,7 +40,10 @@ const HealthResponseSchema = z.object({
 const GenerationTaskSchema = z.object({
   id: z.string().min(1),
   status: z.enum(['queued', 'running', 'success', 'error']),
+  kind: z.enum(['generation', 'edit']),
   prompt: z.string(),
+  size: ImageSizeSchema,
+  isPublic: z.boolean(),
   imageId: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
   referenceImages: z.array(ImageUrlSchema).default([]),
@@ -48,7 +52,12 @@ const GenerationTaskSchema = z.object({
 })
 const TaskListResponseSchema = z.object({ items: z.array(GenerationTaskSchema) })
 
-const ImageListResponseSchema = z.object({ items: z.array(GeneratedImageSchema) })
+const ImageListResponseSchema = z.object({
+  items: z.array(GeneratedImageSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+})
 const GalleryResponseSchema = z.object({
   items: z.array(GeneratedImageSchema),
   total: z.number().int().nonnegative(),
@@ -74,8 +83,15 @@ export async function getHealth(): Promise<HealthStatus> {
   return requestJson('/api/health', HealthResponseSchema)
 }
 
-export async function getImages(): Promise<ReadonlyArray<GeneratedImage>> {
-  return (await requestJson('/api/images', ImageListResponseSchema)).items
+export async function getImages(input: {
+  page?: number
+  pageSize?: number
+} = {}): Promise<{ items: GeneratedImage[]; total: number; page: number; pageSize: number }> {
+  const params = new URLSearchParams({
+    page: String(input.page ?? 1),
+    pageSize: String(input.pageSize ?? 30),
+  })
+  return requestJson(`/api/images?${params}`, ImageListResponseSchema)
 }
 
 export type GenerationTask = z.infer<typeof GenerationTaskSchema>
@@ -130,6 +146,12 @@ export async function getGenerationTasks(ids: ReadonlyArray<string>): Promise<Ge
   return (await requestJson(`/api/image-tasks/${ids.map(encodeURIComponent).join(',')}`, TaskListResponseSchema)).items
 }
 
+export async function retryGenerationTask(id: string): Promise<GenerationTask[]> {
+  return (await requestJson(`/api/image-tasks/${encodeURIComponent(id)}/retry`, TaskListResponseSchema, {
+    method: 'POST',
+  })).items
+}
+
 export async function getPublicGallery(input: {
   query?: string
   category?: string
@@ -140,7 +162,7 @@ export async function getPublicGallery(input: {
   if (input.query?.trim()) params.set('q', input.query.trim())
   if (input.category && input.category !== '全部') params.set('category', input.category)
   params.set('page', String(input.page ?? 1))
-  params.set('pageSize', String(input.pageSize ?? 100))
+  params.set('pageSize', String(input.pageSize ?? 24))
   return requestJson(`/api/gallery?${params}`, GalleryResponseSchema)
 }
 

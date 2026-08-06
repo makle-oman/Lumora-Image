@@ -8,12 +8,14 @@ import {
   getImages,
   getPublicGallery,
   publishLocalImage,
+  retryGenerationTask,
   updateImageVisibility,
 } from './imageApi'
 
 const image = {
   id: 'image-1',
   url: '/api/images/image-1/file',
+  thumbnailUrl: '/api/images/image-1/thumbnail',
   prompt: 'test prompt',
   size: '1024x1024',
   model: 'gpt-image-2',
@@ -29,7 +31,10 @@ const image = {
 const task = {
   id: 'task-1',
   status: 'queued',
+  kind: 'generation',
   prompt: 'test prompt',
+  size: '1024x1024',
+  isPublic: false,
   imageId: null,
   error: null,
   referenceImages: ['/api/image-tasks/task-1/references/0'],
@@ -72,10 +77,23 @@ describe('image service', () => {
     await expect(getGenerationTasks(['task-1'])).resolves.toMatchObject([{ status: 'running' }])
   })
 
+  it('retries a failed task with its saved request', async () => {
+    const failedTask = { ...task, status: 'error', error: 'upstream failed' }
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({
+      items: [{ ...task, id: 'task-retry' }],
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(retryGenerationTask(failedTask.id)).resolves.toMatchObject([{ id: 'task-retry' }])
+    expect(fetchMock).toHaveBeenCalledWith('/api/image-tasks/task-1/retry', expect.objectContaining({
+      method: 'POST',
+    }))
+  })
+
   it('sends reference edits as multipart and builds gallery queries', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(apiResponse({ items: [task] }))
-      .mockResolvedValueOnce(apiResponse({ items: [image], total: 1, page: 1, pageSize: 100 }))
+      .mockResolvedValueOnce(apiResponse({ items: [image], total: 1, page: 1, pageSize: 24 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const reference = new File([new Uint8Array([1, 2, 3])], 'reference.png', { type: 'image/png' })
@@ -89,9 +107,10 @@ describe('image service', () => {
     expect(form.get('size')).toBe('1024x1024')
     expect(form.get('batch')).toBe('true')
 
-    await getPublicGallery({ query: 'poster', category: '海报插画' })
+    await getPublicGallery({ query: 'poster', category: '海报设计' })
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('q=poster')
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(encodeURIComponent('海报插画'))
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(encodeURIComponent('海报设计'))
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('pageSize=24')
   })
 
   it('passes 4K output dimensions to generation requests', async () => {
@@ -106,23 +125,31 @@ describe('image service', () => {
 
   it('accepts flexible GPT Image 2 sizes in creation history', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({
-      items: [{ ...image, size: '1536x1024' }],
+      items: [{ ...image, size: '1536x1024' }], total: 1, page: 1, pageSize: 30,
     })))
 
-    await expect(getImages()).resolves.toMatchObject([{
-      size: '1536x1024',
-      referenceImages: ['/api/images/image-1/references/0'],
-    }])
+    await expect(getImages()).resolves.toMatchObject({
+      items: [{
+        size: '1536x1024',
+        referenceImages: ['/api/images/image-1/references/0'],
+      }],
+      total: 1,
+    })
   })
 
   it('resolves desktop image resources against the remote service', async () => {
     vi.stubGlobal('location', { search: '?lumora-desktop=1' })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({ items: [image] })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({
+      items: [image], total: 1, page: 1, pageSize: 30,
+    })))
 
-    await expect(getImages()).resolves.toMatchObject([{
-      url: 'https://makle.cloud/api/images/image-1/file',
-      referenceImages: ['https://makle.cloud/api/images/image-1/references/0'],
-    }])
+    await expect(getImages()).resolves.toMatchObject({
+      items: [{
+        url: 'https://makle.cloud/api/images/image-1/file',
+        thumbnailUrl: 'https://makle.cloud/api/images/image-1/thumbnail',
+        referenceImages: ['https://makle.cloud/api/images/image-1/references/0'],
+      }],
+    })
   })
 
   it('updates image visibility', async () => {

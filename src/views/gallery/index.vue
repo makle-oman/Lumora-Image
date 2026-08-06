@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, Sparkles } from 'lucide-vue-next'
+import { LoaderCircle, Search, Sparkles } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import ImageGallery from '../../components/ImageGallery/index.vue'
 import { useGalleryStore } from '../../stores/gallery'
 
 const router = useRouter()
 const galleryStore = useGalleryStore()
-const { items, stats, loading, error } = storeToRefs(galleryStore)
+const { items, stats, loading, loadingMore, error, hasMore } = storeToRefs(galleryStore)
 
 const searchKeyword = ref('')
 const selectedCategory = ref('全部')
+const loadMoreTrigger = ref<HTMLElement | null>(null)
+let loadMoreObserver: IntersectionObserver | null = null
 
 // Animated Stat Numbers
 const statNum1 = ref(0)
@@ -43,7 +45,16 @@ function animateCounters(): void {
 onMounted(async () => {
   await Promise.all([galleryStore.loadStats(), galleryStore.search('', '全部', false)])
   animateCounters()
+  loadMoreObserver = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) void galleryStore.loadMore()
+  }, {
+    root: document.getElementById('main-content'),
+    rootMargin: '600px 0px',
+  })
+  if (loadMoreTrigger.value) loadMoreObserver.observe(loadMoreTrigger.value)
 })
+
+onUnmounted(() => loadMoreObserver?.disconnect())
 
 const primaryCategories = computed(() => [
   { name: '全部', count: stats.value.publicImages },
@@ -136,6 +147,17 @@ watch(selectedCategory, () => {
         @reuse="handleReuse"
       />
       <p v-if="error" class="gallery-error" role="alert">{{ error }}</p>
+      <div ref="loadMoreTrigger" class="gallery-load-more">
+        <button
+          v-if="hasMore"
+          type="button"
+          :disabled="loadingMore"
+          @click="galleryStore.loadMore()"
+        >
+          <LoaderCircle v-if="loadingMore" :size="14" class="gallery-loader" />
+          <span>{{ loadingMore ? '加载中' : '加载更多' }}</span>
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -151,6 +173,39 @@ watch(selectedCategory, () => {
   color: #dc2626;
   font-size: 13px;
   text-align: center;
+}
+
+.gallery-load-more {
+  display: flex;
+  min-height: 44px;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.gallery-load-more button {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+  color: #475569;
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.gallery-load-more button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.gallery-loader {
+  animation: gallery-spin 700ms linear infinite;
+}
+
+@keyframes gallery-spin {
+  to { transform: rotate(360deg); }
 }
 
 .prompts-header {

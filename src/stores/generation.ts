@@ -9,6 +9,7 @@ import {
   getHealth,
   getImages,
   publishLocalImage,
+  retryGenerationTask,
   updateImageVisibility,
   type GenerationTask,
 } from '../services/imageApi'
@@ -27,7 +28,11 @@ import type {
 export const useGenerationStore = defineStore('generation', () => {
   const messageStore = useMessageStore()
   const images = ref<ReadonlyArray<GeneratedImage>>([])
+  const imageTotal = ref(0)
+  const imagePage = ref(0)
+  const imagesLoading = ref(false)
   const activeTasks = ref<GenerationTask[]>([])
+  const failedTasks = ref<GenerationTask[]>([])
   const requestState = ref<GenerationRequestState>({ status: 'idle' })
   const apiStatus = ref<ApiStatus>('checking')
   const isSubmitting = ref(false)
@@ -38,6 +43,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   const activePrompt = computed(() => activeTasks.value[0]?.prompt ?? '')
   const isLoading = computed(() => isSubmitting.value || activeTasks.value.length > 0)
+  const hasMoreImages = computed(() => images.value.length < imageTotal.value)
   const errorMessage = computed(() => requestState.value.status === 'error' ? requestState.value.message : '')
 
   async function checkConfiguration(): Promise<void> {
@@ -55,8 +61,13 @@ export const useGenerationStore = defineStore('generation', () => {
   }
 
   async function loadImages(showError = true): Promise<void> {
+    if (imagesLoading.value) return
+    imagesLoading.value = true
     try {
-      images.value = await useDesktopStore().prepareLocalImages(await getImages())
+      const result = await getImages({ page: 1, pageSize: 30 })
+      images.value = await useDesktopStore().prepareLocalImages(result.items)
+      imageTotal.value = result.total
+      imagePage.value = result.page
     }
     catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -69,6 +80,32 @@ export const useGenerationStore = defineStore('generation', () => {
           message: error instanceof Error ? error.message : '图片列表加载失败',
         }
       }
+    }
+    finally {
+      imagesLoading.value = false
+    }
+  }
+
+  async function loadMoreImages(): Promise<void> {
+    if (imagesLoading.value || !hasMoreImages.value) return
+    imagesLoading.value = true
+    try {
+      const result = await getImages({ page: imagePage.value + 1, pageSize: 30 })
+      const nextItems = await useDesktopStore().prepareLocalImages(result.items)
+      const byId = new Map(images.value.map(image => [image.id, image]))
+      for (const image of nextItems) byId.set(image.id, image)
+      images.value = [...byId.values()]
+      imageTotal.value = result.total
+      imagePage.value = result.page
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '更多图片加载失败',
+      }
+    }
+    finally {
+      imagesLoading.value = false
     }
   }
 
@@ -104,8 +141,9 @@ export const useGenerationStore = defineStore('generation', () => {
   async function resumeTasks(showError = true): Promise<void> {
     stopPolling()
     try {
-      activeTasks.value = (await getActiveGenerationTasks())
-        .filter(task => task.status === 'queued' || task.status === 'running')
+      const tasks = await getActiveGenerationTasks()
+      activeTasks.value = tasks.filter(task => task.status === 'queued' || task.status === 'running')
+      failedTasks.value = tasks.filter(task => task.status === 'error')
       if (activeTasks.value.length) {
         requestState.value = { status: 'loading' }
         startPolling()
@@ -136,6 +174,12 @@ export const useGenerationStore = defineStore('generation', () => {
 
     const successes = finished.filter(task => task.status === 'success')
     const failures = finished.filter(task => task.status === 'error')
+    if (failures.length) {
+      const byId = new Map(failedTasks.value.map(task => [task.id, task]))
+      for (const task of failures) byId.set(task.id, task)
+      failedTasks.value = [...byId.values()]
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    }
     if (successes.length) await loadImages()
     await Promise.all([
       useUserStore().refreshProfile(),
@@ -189,6 +233,27 @@ export const useGenerationStore = defineStore('generation', () => {
     schedulePolling()
   }
 
+  async function retryTask(id: string): Promise<void> {
+    if (isLoading.value) return
+    isSubmitting.value = true
+    requestState.value = { status: 'loading' }
+    try {
+      await applyTaskUpdates(await retryGenerationTask(id))
+      messageStore.show('已重新提交生成任务', 'info')
+      startPolling()
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '重新生成失败',
+      }
+      messageStore.show(requestState.value.message, 'error')
+    }
+    finally {
+      isSubmitting.value = false
+    }
+  }
+
   function schedulePolling(delay?: number): void {
     if (pollTimer) clearTimeout(pollTimer)
     pollTimer = null
@@ -210,6 +275,7 @@ export const useGenerationStore = defineStore('generation', () => {
       await deleteImage(id)
       if (image) await useDesktopStore().deleteLocalImage(image)
       images.value = images.value.filter(image => image.id !== id)
+      imageTotal.value = Math.max(0, imageTotal.value - 1)
       if (image?.isPublic) {
         await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
       }
@@ -262,6 +328,8 @@ export const useGenerationStore = defineStore('generation', () => {
       await deleteAllImages()
       await Promise.all(currentImages.map(image => useDesktopStore().deleteLocalImage(image)))
       images.value = []
+      imageTotal.value = 0
+      imagePage.value = 0
       await Promise.all([useGalleryStore().refresh(false), useGalleryStore().loadStats()])
     }
     catch (error) {
@@ -275,7 +343,11 @@ export const useGenerationStore = defineStore('generation', () => {
   function reset(): void {
     stopPolling()
     images.value = []
+    imageTotal.value = 0
+    imagePage.value = 0
+    imagesLoading.value = false
     activeTasks.value = []
+    failedTasks.value = []
     isSubmitting.value = false
     requestState.value = { status: 'idle' }
     apiStatus.value = 'unauthenticated'
@@ -284,15 +356,20 @@ export const useGenerationStore = defineStore('generation', () => {
   return {
     images,
     activeTasks,
+    failedTasks,
     activePrompt,
     requestState,
     apiStatus,
     isLoading,
+    imagesLoading,
+    hasMoreImages,
     errorMessage,
     checkConfiguration,
     loadImages,
+    loadMoreImages,
     resumeTasks,
     generate,
+    retryTask,
     setImageVisibility,
     removeImage,
     clearGallery,

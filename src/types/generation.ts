@@ -12,6 +12,7 @@ export type GenerateImageRequest = Readonly<{
 export type GeneratedImage = Readonly<{
   id: string
   url: string
+  thumbnailUrl: string
   prompt: string
   size: ImageSize
   model: 'gpt-image-2'

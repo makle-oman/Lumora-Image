@@ -26,7 +26,7 @@ describe('gallery store', () => {
       items: [{ id: 'image-1' }],
       total: 1,
       page: 1,
-      pageSize: 100,
+      pageSize: 24,
     })
     const store = useGalleryStore()
 
@@ -35,7 +35,9 @@ describe('gallery store', () => {
 
     expect(store.stats.publicImages).toBe(1)
     expect(store.items).toEqual([{ id: 'image-1' }])
-    expect(getPublicGallery).toHaveBeenCalledWith({ query: 'test', category: '其他' })
+    expect(getPublicGallery).toHaveBeenCalledWith({
+      query: 'test', category: '其他', page: 1, pageSize: 24,
+    })
   })
 
   it('keeps initialization failures silent', async () => {
@@ -59,28 +61,48 @@ describe('gallery store', () => {
   })
 
   it('refreshes the latest search without resetting its filters', async () => {
-    getPublicGallery.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 })
+    getPublicGallery.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 24 })
     const store = useGalleryStore()
 
     await store.search('poster', '海报插画')
     getPublicGallery.mockClear()
     await store.refresh()
 
-    expect(getPublicGallery).toHaveBeenCalledWith({ query: 'poster', category: '海报插画' })
+    expect(getPublicGallery).toHaveBeenCalledWith({
+      query: 'poster', category: '海报插画', page: 1, pageSize: 24,
+    })
   })
 
   it('ignores stale search responses', async () => {
-    let resolveFirst: ((value: { items: Array<{ id: string }> }) => void) | undefined
+    let resolveFirst: ((value: {
+      items: Array<{ id: string }>
+      total: number
+      page: number
+      pageSize: number
+    }) => void) | undefined
     getPublicGallery
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
-      .mockResolvedValueOnce({ items: [{ id: 'new' }] })
+      .mockResolvedValueOnce({ items: [{ id: 'new' }], total: 1, page: 1, pageSize: 24 })
     const store = useGalleryStore()
 
     const firstSearch = store.search('old')
     await store.search('new')
-    resolveFirst?.({ items: [{ id: 'old' }] })
+    resolveFirst?.({ items: [{ id: 'old' }], total: 1, page: 1, pageSize: 24 })
     await firstSearch
 
     expect(store.items).toEqual([{ id: 'new' }])
+  })
+
+  it('appends the next gallery page', async () => {
+    getPublicGallery
+      .mockResolvedValueOnce({ items: [{ id: 'first' }], total: 2, page: 1, pageSize: 1 })
+      .mockResolvedValueOnce({ items: [{ id: 'second' }], total: 2, page: 2, pageSize: 1 })
+    const store = useGalleryStore()
+
+    await store.search('', '全部', true, 1)
+    await store.loadMore()
+
+    expect(store.items).toEqual([{ id: 'first' }, { id: 'second' }])
+    expect(store.hasMore).toBe(false)
   })
 })

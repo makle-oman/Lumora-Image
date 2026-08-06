@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
+  CircleAlert,
   Copy,
   Download,
   Edit3,
@@ -23,16 +24,28 @@ const route = useRoute()
 const desktopStore = useDesktopStore()
 const generationStore = useGenerationStore()
 const messageStore = useMessageStore()
-const { images, activeTasks, isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
+const {
+  images,
+  activeTasks,
+  failedTasks,
+  isLoading,
+  imagesLoading,
+  hasMoreImages,
+  errorMessage,
+  apiStatus,
+} = storeToRefs(generationStore)
 
 const prompt = ref('')
 const selectedPreview = ref<{ url: string; alt: string; downloadName?: string } | null>(null)
 const copiedId = ref<string | null>(null)
 const visibilityUpdatingId = ref<string | null>(null)
+const loadMoreTrigger = ref<HTMLElement | null>(null)
+let loadMoreObserver: IntersectionObserver | null = null
 
 // Newest generated images first
 const sortedImages = computed(() => {
-  return [...images.value].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  return [...images.value]
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 })
 
 // Dynamic loading step messages
@@ -57,14 +70,22 @@ onMounted(() => {
   if (route.query.prompt) {
     prompt.value = String(route.query.prompt)
   }
-  void Promise.all([
-    generationStore.resumeTasks(false),
-    generationStore.loadImages(false),
-  ])
+  const resume = generationStore.isLoading
+    ? Promise.resolve()
+    : generationStore.resumeTasks(false)
+  void Promise.all([resume, generationStore.loadImages(false)])
+  loadMoreObserver = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) void generationStore.loadMoreImages()
+  }, {
+    root: document.getElementById('main-content'),
+    rootMargin: '600px 0px',
+  })
+  if (loadMoreTrigger.value) loadMoreObserver.observe(loadMoreTrigger.value)
 })
 
 onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval)
+  loadMoreObserver?.disconnect()
 })
 
 watch(() => route.query.prompt, (newVal) => {
@@ -76,7 +97,7 @@ watch(() => route.query.prompt, (newVal) => {
 watch(() => activeTasks.value.length, (count) => {
   if (timerInterval) clearInterval(timerInterval)
   timerInterval = count
-    ? setInterval(() => { currentTime.value = Date.now() }, 100)
+    ? setInterval(() => { currentTime.value = Date.now() }, 1000)
     : null
 }, { immediate: true })
 
@@ -85,7 +106,7 @@ watch(isLoading, (loading) => {
 })
 
 function elapsedSeconds(createdAt: string): string {
-  return (Math.max(0, currentTime.value - Date.parse(createdAt)) / 1000).toFixed(1)
+  return Math.floor(Math.max(0, currentTime.value - Date.parse(createdAt)) / 1000).toString()
 }
 
 function loadingStepIndex(createdAt: string): number {
@@ -114,6 +135,10 @@ async function handleRegenerate(img: GeneratedImage): Promise<void> {
   await generationStore.generate({
     prompt: img.prompt,
   })
+}
+
+async function handleRetryTask(id: string): Promise<void> {
+  await generationStore.retryTask(id)
 }
 
 async function handleVisibilityChange(img: GeneratedImage, event: Event): Promise<void> {
@@ -153,6 +178,7 @@ function openReferenceImage(url: string, promptText: string): void {
 function useSamplePrompt(p: string): void {
   prompt.value = p
 }
+
 </script>
 
 <template>
@@ -211,11 +237,74 @@ function useSamplePrompt(p: string): void {
         <!-- Disabled Action Bar -->
       </div>
 
+      <div
+        v-for="task in failedTasks"
+        :key="task.id"
+        class="stream-row-item failed-row-item"
+      >
+        <div class="failed-status-pill">
+          <CircleAlert :size="14" />
+          <span>生成失败</span>
+        </div>
+
+        <div class="prompt-bubble">
+          <span class="prompt-text">{{ task.prompt }}</span>
+          <span class="timestamp">{{ formatTime(task.updatedAt) }}</span>
+        </div>
+
+        <div v-if="task.referenceImages.length" class="reference-image-row">
+          <span class="reference-image-label">参考图</span>
+          <button
+            v-for="(referenceUrl, index) in task.referenceImages"
+            :key="referenceUrl"
+            class="reference-image-button"
+            type="button"
+            :title="`查看参考图 ${index + 1}`"
+            @click="openReferenceImage(referenceUrl, task.prompt)"
+          >
+            <img :src="referenceUrl" :alt="`参考图 ${index + 1}`" />
+          </button>
+        </div>
+
+        <div class="failed-error-panel">{{ task.error || '上游未返回图片，请重新生成' }}</div>
+
+        <div class="card-action-bar">
+          <button
+            class="action-pill-btn"
+            type="button"
+            title="编辑提示词"
+            @click="handleReEdit(task.prompt)"
+          >
+            <Pencil :size="12" />
+            <span>编辑提示词</span>
+          </button>
+          <button
+            class="action-pill-btn"
+            type="button"
+            title="复制提示词"
+            @click="copyPromptText(task.id, task.prompt)"
+          >
+            <Copy :size="12" />
+            <span>{{ copiedId === task.id ? '已复制' : '复制提示词' }}</span>
+          </button>
+          <button
+            class="action-pill-btn retry-action-btn"
+            type="button"
+            title="按原参数重新生成"
+            :disabled="isLoading"
+            @click="handleRetryTask(task.id)"
+          >
+            <RotateCcw :size="12" />
+            <span>重新生成</span>
+          </button>
+        </div>
+      </div>
+
       <!-- 2. Generated Images List (Stacked Vertically One Per Row, Newest First) -->
       <div
         v-for="img in sortedImages"
         :key="img.id"
-        class="stream-row-item"
+        class="stream-row-item history-row-item"
       >
         <!-- Glassmorphic Prompt Bubble Container (Fit text content, soft purple glow on hover) -->
         <div class="prompt-bubble">
@@ -270,7 +359,14 @@ function useSamplePrompt(p: string): void {
 
         <!-- Direct Pure Image Thumbnail -->
         <div class="image-stage" @click="openPureImage(img)">
-          <img :src="img.url" :alt="img.prompt" class="generated-img" loading="lazy" />
+          <img
+            :src="img.thumbnailUrl"
+            :alt="img.prompt"
+            class="generated-img"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
+          />
           <div class="hover-view-overlay">
             <Sparkles :size="18" />
             <span>全屏大图</span>
@@ -328,6 +424,19 @@ function useSamplePrompt(p: string): void {
             <span>保存</span>
           </a>
         </div>
+      </div>
+
+      <div ref="loadMoreTrigger" class="load-more-trigger">
+        <button
+          v-if="hasMoreImages"
+          class="load-more-button"
+          type="button"
+          :disabled="imagesLoading"
+          @click="generationStore.loadMoreImages"
+        >
+          <LoaderCircle v-if="imagesLoading" :size="13" class="mini-spin" />
+          <span>{{ imagesLoading ? '加载中' : '加载更多' }}</span>
+        </button>
       </div>
     </div>
 
@@ -460,6 +569,75 @@ function useSamplePrompt(p: string): void {
   border-radius: 20px;
   box-shadow: 0 4px 16px rgba(124, 58, 237, 0.12);
   backdrop-filter: blur(10px);
+}
+
+.history-row-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 360px;
+}
+
+.load-more-trigger {
+  display: flex;
+  min-height: 36px;
+  justify-content: center;
+}
+
+.load-more-button {
+  align-self: center;
+  min-height: 36px;
+  padding: 0 18px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.load-more-button:hover {
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.failed-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 650;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 16px;
+}
+
+.failed-error-panel {
+  width: min(720px, 100%);
+  box-sizing: border-box;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  color: #912018;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  background: #fff7f6;
+  border-left: 3px solid #f97066;
+  border-radius: 6px;
+}
+
+.retry-action-btn {
+  color: #7c2d12;
+  border-color: #fed7aa;
+}
+
+.action-pill-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
 }
 
 .color-wheel-icon {

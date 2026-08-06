@@ -4,7 +4,6 @@ import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
-import { confirmImageLocalized } from '../services/imageApi'
 import type { GeneratedImage } from '../types/generation'
 import { useMessageStore } from './message'
 
@@ -209,31 +208,11 @@ export const useDesktopStore = defineStore('desktop', () => {
 
   async function prepareLocalImages(items: ReadonlyArray<GeneratedImage>): Promise<ReadonlyArray<GeneratedImage>> {
     if (!available) return items
-    const prepared: GeneratedImage[] = []
-    for (const image of items) {
-      if (image.storage === 'local') {
-        prepared.push({ ...image, url: localImageUrl(image) })
-        continue
-      }
-      try {
-        const response = await fetch(image.url, { cache: 'no-store', credentials: 'include' })
-        if (!response.ok) throw new Error(`图片下载失败: ${response.status}`)
-        const url = await invoke<string>('save_local_image', new Uint8Array(await response.arrayBuffer()), {
-          headers: {
-            'x-lumora-image-id': image.id,
-            'x-lumora-image-format': image.format,
-          },
-        })
-        const localized = await confirmImageLocalized(image.id)
-        prepared.push({ ...image, url, storage: localized.storage, isPublic: localized.isPublic })
-      }
-      catch (cause) {
-        error.value = cause instanceof Error ? cause.message : '图片本地保存失败'
-        messageStore.show(`图片本地保存失败：${error.value}`, 'error')
-        prepared.push(image)
-      }
-    }
-    return prepared
+    return items.map((image) => {
+      if (image.storage !== 'local') return image
+      const url = localImageUrl(image)
+      return { ...image, url, thumbnailUrl: url }
+    })
   }
 
   async function deleteLocalImage(image: GeneratedImage): Promise<void> {

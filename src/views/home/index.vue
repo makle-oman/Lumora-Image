@@ -31,13 +31,15 @@ async function generate(request: GenerateImageRequest): Promise<void> {
     userStore.toggleAuthModal(true)
     return
   }
-  await router.push('/create')
-  await generationStore.generate(request)
+  await Promise.all([
+    generationStore.generate(request),
+    router.push('/create'),
+  ])
 }
 
 onMounted(() => void Promise.all([
   galleryStore.loadStats(),
-  galleryStore.search('', '全部', false),
+  galleryStore.search('', '全部', false, 8),
 ]))
 </script>
 

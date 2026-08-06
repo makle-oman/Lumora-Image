@@ -117,45 +117,35 @@ describe('desktop store', () => {
     expect(relaunch).toHaveBeenCalledOnce()
   })
 
-  it('archives server images locally on desktop', async () => {
+  it('keeps server images remote and resolves existing local images', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        code: 0,
-        message: 'success',
-        data: { id: 'img-0123456789abcdef0123456789abcdef', storage: 'local', isPublic: true },
-        timestamp: 1,
-      })))
     vi.stubGlobal('fetch', fetchMock)
-    invoke.mockImplementation((command: string) => {
-      if (command === 'save_local_image') {
-        return Promise.resolve('https://lumora-local.localhost/img-0123456789abcdef0123456789abcdef.png')
-      }
-      return Promise.resolve(null)
-    })
     const store = useDesktopStore()
 
-    const images = await store.prepareLocalImages([{
+    const serverImage = {
       id: 'img-0123456789abcdef0123456789abcdef',
       url: '/api/images/img-0123456789abcdef0123456789abcdef/file',
+      thumbnailUrl: '/api/images/img-0123456789abcdef0123456789abcdef/thumbnail',
       prompt: 'test',
-      size: '1024x1024',
-      model: 'gpt-image-2',
+      size: '1024x1024' as const,
+      model: 'gpt-image-2' as const,
       createdAt: '2026-07-30T00:00:00Z',
-      source: 'generated',
-      format: 'png',
+      source: 'generated' as const,
+      format: 'png' as const,
       isPublic: true,
       category: '其他',
-      storage: 'server',
-    }])
+      storage: 'server' as const,
+    }
+    const images = await store.prepareLocalImages([
+      serverImage,
+      { ...serverImage, id: 'local-image', storage: 'local' },
+    ])
 
-    expect(images[0]).toMatchObject({ storage: 'local', isPublic: true })
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/images/img-0123456789abcdef0123456789abcdef/file', {
-      cache: 'no-store',
-      credentials: 'include',
+    expect(images[0]).toEqual(serverImage)
+    expect(images[1]).toMatchObject({
+      url: 'https://lumora-local.localhost/local-image.png',
+      thumbnailUrl: 'https://lumora-local.localhost/local-image.png',
     })
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://makle.cloud/api/images/img-0123456789abcdef0123456789abcdef/local', expect.objectContaining({
-      method: 'POST',
-    }))
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
