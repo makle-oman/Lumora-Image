@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import ImageGallery from '../../components/ImageGallery/index.vue'
 import PromptComposer from '../../components/PromptComposer/index.vue'
 import { useGenerationStore } from '../../stores/generation'
+import { useFavoritesStore } from '../../stores/favorites'
 import { useGalleryStore } from '../../stores/gallery'
 import { useUserStore } from '../../stores/user'
-import type { GenerateImageRequest } from '../../types/generation'
+import type { GeneratedImage, GenerateImageRequest } from '../../types/generation'
 
 const router = useRouter()
 const generationStore = useGenerationStore()
+const favoritesStore = useFavoritesStore()
 const galleryStore = useGalleryStore()
 const userStore = useUserStore()
 const { isLoading, errorMessage, apiStatus } = storeToRefs(generationStore)
 const { items, stats, loading } = storeToRefs(galleryStore)
+const { updatingIds: favoriteUpdatingIds } = storeToRefs(favoritesStore)
 const prompt = ref('')
 const isScrolled = ref(false)
 const homeView = ref<HTMLElement | null>(null)
@@ -37,10 +40,17 @@ async function generate(request: GenerateImageRequest): Promise<void> {
   ])
 }
 
+async function handleToggleFavorite(item: GeneratedImage): Promise<void> {
+  const updated = await favoritesStore.setFavorite(item, !item.isFavorited)
+  if (updated !== null) galleryStore.setFavoriteState(item.id, updated)
+}
+
 onMounted(() => void Promise.all([
   galleryStore.loadStats(),
   galleryStore.search('', '全部', false, 8),
 ]))
+
+watch(() => userStore.isLoggedIn, () => void galleryStore.refresh(false))
 </script>
 
 <template>
@@ -71,7 +81,14 @@ onMounted(() => void Promise.all([
     <section class="recent-work">
       <h2>最近创作</h2>
       <p>来自所有创作者的灵感</p>
-      <ImageGallery :items="items" :loading="loading" mode="showcase" />
+      <ImageGallery
+        :items="items"
+        :loading="loading"
+        :show-favorite-action="userStore.isLoggedIn"
+        :favorite-updating-ids="favoriteUpdatingIds"
+        mode="showcase"
+        @toggle-favorite="handleToggleFavorite"
+      />
     </section>
 
     <!-- Fixed Floating Bottom Composer Dock (Visible when scrolled) -->

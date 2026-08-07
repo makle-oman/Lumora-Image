@@ -20,9 +20,11 @@ export type GeneratedImage = Readonly<{
   source: 'sample' | 'generated'
   format: 'png' | 'jpeg' | 'webp'
   isPublic: boolean
+  isFavorited: boolean
   category: string
   storage: 'server' | 'pending' | 'local'
   author?: string
+  favoritedAt?: string
   referenceImages?: ReadonlyArray<string>
 }>
 

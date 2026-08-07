@@ -133,6 +133,7 @@ describe('desktop store', () => {
       source: 'generated' as const,
       format: 'png' as const,
       isPublic: true,
+      isFavorited: false,
       category: '其他',
       storage: 'server' as const,
     }

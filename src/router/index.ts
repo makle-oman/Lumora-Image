@@ -21,6 +21,12 @@ const router = createRouter({
       component: () => import('../views/gallery/index.vue'),
     },
     {
+      path: '/assets',
+      name: 'assets',
+      component: () => import('../views/assets/index.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/api',
       alias: '/developer',
       name: 'api',

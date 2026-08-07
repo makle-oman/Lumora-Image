@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  addFavorite,
   clearFailedGenerationTasks,
   confirmImageLocalized,
   deleteFailedGenerationTask,
@@ -7,9 +8,11 @@ import {
   getActiveGenerationTasks,
   getGenerationTasks,
   getHealth,
+  getFavoriteImages,
   getImages,
   getPublicGallery,
   publishLocalImage,
+  removeFavorite,
   retryGenerationTask,
   updateImageVisibility,
 } from './imageApi'
@@ -25,6 +28,7 @@ const image = {
   source: 'generated',
   format: 'png',
   isPublic: false,
+  isFavorited: false,
   category: '其他',
   storage: 'server',
   referenceImages: ['/api/images/image-1/references/0'],
@@ -82,11 +86,11 @@ describe('image service', () => {
   it('retries a failed task with its saved request', async () => {
     const failedTask = { ...task, status: 'error', error: 'upstream failed' }
     const fetchMock = vi.fn().mockResolvedValue(apiResponse({
-      items: [{ ...task, id: 'task-retry' }],
+      items: [task],
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(retryGenerationTask(failedTask.id)).resolves.toMatchObject([{ id: 'task-retry' }])
+    await expect(retryGenerationTask(failedTask.id)).resolves.toMatchObject([{ id: 'task-1' }])
     expect(fetchMock).toHaveBeenCalledWith('/api/image-tasks/task-1/retry', expect.objectContaining({
       method: 'POST',
     }))
@@ -144,22 +148,38 @@ describe('image service', () => {
 
   it('accepts flexible GPT Image 2 sizes in creation history', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({
-      items: [{ ...image, size: '1536x1024' }], total: 1, page: 1, pageSize: 30,
+      items: [{ ...image, size: '1536x1024' }],
+      total: 1,
+      allTotal: 1,
+      publicTotal: 0,
+      privateTotal: 1,
+      page: 1,
+      pageSize: 30,
     })))
 
-    await expect(getImages()).resolves.toMatchObject({
+    await expect(getImages({ query: 'poster', visibility: 'private' })).resolves.toMatchObject({
       items: [{
         size: '1536x1024',
         referenceImages: ['/api/images/image-1/references/0'],
       }],
       total: 1,
     })
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('q=poster&visibility=private'),
+      expect.anything(),
+    )
   })
 
   it('resolves desktop image resources against the remote service', async () => {
     vi.stubGlobal('location', { search: '?lumora-desktop=1' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(apiResponse({
-      items: [image], total: 1, page: 1, pageSize: 30,
+      items: [image],
+      total: 1,
+      allTotal: 1,
+      publicTotal: 0,
+      privateTotal: 1,
+      page: 1,
+      pageSize: 30,
     })))
 
     await expect(getImages()).resolves.toMatchObject({
@@ -180,6 +200,36 @@ describe('image service', () => {
       method: 'PUT',
       body: JSON.stringify({ isPublic: true }),
     }))
+  })
+
+  it('lists and updates favorites', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(apiResponse({
+        items: [{ ...image, isFavorited: true, favoritedAt: '2026-07-28T12:00:00Z' }],
+        total: 1,
+        page: 1,
+        pageSize: 30,
+      }))
+      .mockResolvedValueOnce(apiResponse({ id: image.id, isFavorited: true }))
+      .mockResolvedValueOnce(apiResponse({ id: image.id, isFavorited: false }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getFavoriteImages({ query: 'test' })).resolves.toMatchObject({
+      total: 1,
+      items: [{ favoritedAt: '2026-07-28T12:00:00Z' }],
+    })
+    await expect(addFavorite(image.id)).resolves.toMatchObject({ isFavorited: true })
+    await expect(removeFavorite(image.id)).resolves.toMatchObject({ isFavorited: false })
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/favorites/image-1',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/favorites/image-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
   })
 
   it('uploads a local image when publishing it', async () => {

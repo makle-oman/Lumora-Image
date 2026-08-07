@@ -24,9 +24,11 @@ const GeneratedImageSchema = z.object({
   source: z.literal('generated'),
   format: z.enum(['png', 'jpeg', 'webp']),
   isPublic: z.boolean(),
+  isFavorited: z.boolean().default(false),
   category: z.string(),
   storage: z.enum(['server', 'pending', 'local']),
   author: z.string().optional(),
+  favoritedAt: z.string().datetime({ offset: true }).optional(),
   referenceImages: z.array(ImageUrlSchema).default([]),
 })
 
@@ -58,6 +60,11 @@ const ImageListResponseSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
 })
+const OwnedImageListResponseSchema = ImageListResponseSchema.extend({
+  allTotal: z.number().int().nonnegative(),
+  publicTotal: z.number().int().nonnegative(),
+  privateTotal: z.number().int().nonnegative(),
+})
 const GalleryResponseSchema = z.object({
   items: z.array(GeneratedImageSchema),
   total: z.number().int().nonnegative(),
@@ -73,6 +80,10 @@ const ImageVisibilitySchema = z.object({
   id: z.string().min(1),
   isPublic: z.boolean(),
 })
+const FavoriteStateSchema = z.object({
+  id: z.string().min(1),
+  isFavorited: z.boolean(),
+})
 const LocalizedImageSchema = z.object({
   id: z.string().min(1),
   storage: z.literal('local'),
@@ -84,17 +95,29 @@ export async function getHealth(): Promise<HealthStatus> {
 }
 
 export async function getImages(input: {
+  query?: string
+  visibility?: ImageVisibilityFilter
   page?: number
   pageSize?: number
-} = {}): Promise<{ items: GeneratedImage[]; total: number; page: number; pageSize: number }> {
-  const params = new URLSearchParams({
-    page: String(input.page ?? 1),
-    pageSize: String(input.pageSize ?? 30),
-  })
-  return requestJson(`/api/images?${params}`, ImageListResponseSchema)
+} = {}): Promise<{
+  items: GeneratedImage[]
+  total: number
+  allTotal: number
+  publicTotal: number
+  privateTotal: number
+  page: number
+  pageSize: number
+}> {
+  const params = new URLSearchParams()
+  if (input.query?.trim()) params.set('q', input.query.trim())
+  if (input.visibility && input.visibility !== 'all') params.set('visibility', input.visibility)
+  params.set('page', String(input.page ?? 1))
+  params.set('pageSize', String(input.pageSize ?? 30))
+  return requestJson(`/api/images?${params}`, OwnedImageListResponseSchema)
 }
 
 export type GenerationTask = z.infer<typeof GenerationTaskSchema>
+export type ImageVisibilityFilter = 'all' | 'public' | 'private'
 
 export async function generateImage(request: GenerateImageRequest): Promise<GenerationTask[]> {
   const parsed = z.object({
@@ -172,6 +195,30 @@ export async function getPublicGallery(input: {
   params.set('page', String(input.page ?? 1))
   params.set('pageSize', String(input.pageSize ?? 24))
   return requestJson(`/api/gallery?${params}`, GalleryResponseSchema)
+}
+
+export async function getFavoriteImages(input: {
+  query?: string
+  page?: number
+  pageSize?: number
+} = {}): Promise<{ items: GeneratedImage[]; total: number; page: number; pageSize: number }> {
+  const params = new URLSearchParams()
+  if (input.query?.trim()) params.set('q', input.query.trim())
+  params.set('page', String(input.page ?? 1))
+  params.set('pageSize', String(input.pageSize ?? 30))
+  return requestJson(`/api/favorites?${params}`, ImageListResponseSchema)
+}
+
+export async function addFavorite(id: string): Promise<z.infer<typeof FavoriteStateSchema>> {
+  return requestJson(`/api/favorites/${encodeURIComponent(id)}`, FavoriteStateSchema, {
+    method: 'PUT',
+  })
+}
+
+export async function removeFavorite(id: string): Promise<z.infer<typeof FavoriteStateSchema>> {
+  return requestJson(`/api/favorites/${encodeURIComponent(id)}`, FavoriteStateSchema, {
+    method: 'DELETE',
+  })
 }
 
 export async function getPublicStats(): Promise<PublicStats> {

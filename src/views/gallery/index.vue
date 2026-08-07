@@ -4,11 +4,17 @@ import { useRouter } from 'vue-router'
 import { LoaderCircle, Search, Sparkles } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import ImageGallery from '../../components/ImageGallery/index.vue'
+import { useFavoritesStore } from '../../stores/favorites'
 import { useGalleryStore } from '../../stores/gallery'
+import { useUserStore } from '../../stores/user'
+import type { GeneratedImage } from '../../types/generation'
 
 const router = useRouter()
+const favoritesStore = useFavoritesStore()
 const galleryStore = useGalleryStore()
+const userStore = useUserStore()
 const { items, stats, loading, loadingMore, error, hasMore } = storeToRefs(galleryStore)
+const { updatingIds: favoriteUpdatingIds } = storeToRefs(favoritesStore)
 
 const searchKeyword = ref('')
 const selectedCategory = ref('全部')
@@ -70,9 +76,16 @@ function handleReuse(prompt: string): void {
   router.push({ path: '/create', query: { prompt } })
 }
 
+async function handleToggleFavorite(item: GeneratedImage): Promise<void> {
+  const updated = await favoritesStore.setFavorite(item, !item.isFavorited)
+  if (updated !== null) galleryStore.setFavoriteState(item.id, updated)
+}
+
 watch(selectedCategory, () => {
   void handleSearch()
 })
+
+watch(() => userStore.isLoggedIn, () => void galleryStore.refresh(false))
 </script>
 
 <template>
@@ -143,8 +156,11 @@ watch(selectedCategory, () => {
         :items="items"
         :loading="loading"
         :selected-category="selectedCategory"
+        :show-favorite-action="userStore.isLoggedIn"
+        :favorite-updating-ids="favoriteUpdatingIds"
         mode="explore"
         @reuse="handleReuse"
+        @toggle-favorite="handleToggleFavorite"
       />
       <p v-if="error" class="gallery-error" role="alert">{{ error }}</p>
       <div ref="loadMoreTrigger" class="gallery-load-more">

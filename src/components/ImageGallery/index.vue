@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Check,
   Copy,
+  Heart,
   Image as ImageIcon,
   Trash2,
   User,
@@ -23,15 +24,20 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   mode?: 'showcase' | 'library' | 'explore'
   selectedCategory?: string
+  showFavoriteAction?: boolean
+  favoriteUpdatingIds?: ReadonlyArray<string>
 }>(), {
   loading: false,
   mode: 'explore',
   selectedCategory: '全部',
+  showFavoriteAction: false,
+  favoriteUpdatingIds: () => [],
 })
 
 const emit = defineEmits<{
   remove: [id: string]
   reuse: [prompt: string]
+  toggleFavorite: [item: GeneratedImage]
 }>()
 
 const router = useRouter()
@@ -168,6 +174,18 @@ function removeImage(id: string): void {
             class="grid-overlay"
             :class="{ 'is-hidden': loadedImageIds.has(item.id) }"
           />
+          <button
+            v-if="showFavoriteAction"
+            class="favorite-button"
+            :class="{ 'is-favorited': item.isFavorited }"
+            type="button"
+            :disabled="favoriteUpdatingIds.includes(item.id)"
+            :title="item.isFavorited ? '取消收藏' : '收藏作品'"
+            :aria-label="item.isFavorited ? '取消收藏' : '收藏作品'"
+            @click.stop="emit('toggleFavorite', item)"
+          >
+            <Heart :size="16" :fill="item.isFavorited ? 'currentColor' : 'none'" />
+          </button>
           <div v-if="mode !== 'showcase' && item.author" class="author-badge">
             <User :size="12" />
             <span>{{ item.author }}</span>
@@ -382,6 +400,47 @@ function removeImage(id: string): void {
   background: rgba(255, 255, 255, 0.85);
   border-radius: 12px;
   backdrop-filter: blur(8px);
+}
+
+.favorite-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  color: #334155;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  transition: color 150ms ease, transform 150ms ease, opacity 150ms ease;
+}
+
+.prompt-card.is-showcase .favorite-button {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.prompt-card.is-showcase:hover .favorite-button,
+.prompt-card.is-showcase:focus-within .favorite-button {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.favorite-button:hover,
+.favorite-button.is-favorited {
+  color: #e11d48;
+}
+
+.favorite-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .card-content {
@@ -693,6 +752,7 @@ function removeImage(id: string): void {
 @media (max-width: 580px) {
   .prompts-grid { grid-template-columns: 1fr; }
   .prompts-grid.is-showcase { grid-template-columns: 1fr; }
+  .prompt-card.is-showcase .favorite-button { opacity: 1; transform: none; }
 }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 200ms ease; }

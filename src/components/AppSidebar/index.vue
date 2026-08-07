@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
+  Archive,
   Bell,
   Brush,
   CircleUserRound,
@@ -17,10 +18,12 @@ import {
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useGenerationStore } from '../../stores/generation'
+import { useFavoritesStore } from '../../stores/favorites'
 import { useDesktopStore } from '../../stores/desktop'
 import { useUserStore } from '../../stores/user'
 
 const generationStore = useGenerationStore()
+const favoritesStore = useFavoritesStore()
 const { apiStatus } = storeToRefs(generationStore)
 const desktopStore = useDesktopStore()
 
@@ -85,6 +88,7 @@ function handleStorageSettings(): void {
 async function handleLogout(): Promise<void> {
   await userStore.logout()
   generationStore.reset()
+  favoritesStore.reset()
   isProfileMenuOpen.value = false
 }
 
@@ -116,13 +120,17 @@ onUnmounted(() => {
         <Images class="nav-icon" :size="21" :stroke-width="1.8" />
         <span class="nav-label">画廊</span>
       </RouterLink>
+      <RouterLink class="nav-item" to="/assets">
+        <Archive class="nav-icon" :size="21" :stroke-width="1.8" />
+        <span class="nav-label">资产</span>
+      </RouterLink>
 
       <RouterLink class="nav-item mobile-only" to="/api">
         <TerminalSquare class="nav-icon" :size="21" :stroke-width="1.8" />
         <span class="nav-label">API</span>
       </RouterLink>
 
-      <RouterLink class="nav-item mobile-only" to="/about">
+      <RouterLink class="nav-item mobile-only mobile-about" to="/about">
         <Info class="nav-icon" :size="21" :stroke-width="1.8" />
         <span class="nav-label">关于</span>
       </RouterLink>
@@ -739,6 +747,10 @@ onUnmounted(() => {
 
   .mobile-only {
     display: grid;
+  }
+
+  .mobile-about {
+    display: none;
   }
 }
 

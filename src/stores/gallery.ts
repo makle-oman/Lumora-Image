@@ -88,5 +88,23 @@ export const useGalleryStore = defineStore('gallery', () => {
     await search(lastQuery, lastCategory, showError, lastPageSize)
   }
 
-  return { items, stats, loading, loadingMore, error, hasMore, loadStats, search, loadMore, refresh }
+  function setFavoriteState(id: string, isFavorited: boolean): void {
+    items.value = items.value.map(item => (
+      item.id === id ? { ...item, isFavorited } : item
+    ))
+  }
+
+  return {
+    items,
+    stats,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
+    loadStats,
+    search,
+    loadMore,
+    refresh,
+    setFavoriteState,
+  }
 })
