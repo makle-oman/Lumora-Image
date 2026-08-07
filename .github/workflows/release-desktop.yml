@@ -2,6 +2,9 @@ name: Publish desktop
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -64,6 +67,6 @@ jobs:
           releaseName: Lumora Image v__VERSION__
           releaseBody: ${{ steps.release_notes.outputs.body }}
           generateReleaseNotes: false
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
