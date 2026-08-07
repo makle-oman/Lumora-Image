@@ -21,6 +21,7 @@ const generationStore = useGenerationStore()
 const messageStore = useMessageStore()
 const copiedKeyId = ref('')
 const copiedText = ref('')
+const showApiKeys = false
 const activeSubNav = ref<'overview' | 'keys' | 'logs' | 'docs'>('overview')
 const activeCodeLang = ref<'curl' | 'python' | 'node' | 'go'>('curl')
 
@@ -568,6 +569,7 @@ onUnmounted(() => {
           概览
         </button>
         <button
+          v-if="showApiKeys"
           class="tab-item"
           :class="{ active: activeSubNav === 'keys' }"
           @click="activeSubNav = 'keys'"

@@ -1,7 +1,9 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
+  clearFailedGenerationTasks,
   deleteAllImages,
+  deleteFailedGenerationTask,
   deleteImage,
   generateImage,
   getActiveGenerationTasks,
@@ -33,6 +35,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const imagesLoading = ref(false)
   const activeTasks = ref<GenerationTask[]>([])
   const failedTasks = ref<GenerationTask[]>([])
+  const failedTasksUpdating = ref(false)
   const requestState = ref<GenerationRequestState>({ status: 'idle' })
   const apiStatus = ref<ApiStatus>('checking')
   const isSubmitting = ref(false)
@@ -254,6 +257,46 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   }
 
+  async function removeFailedTask(id: string): Promise<void> {
+    if (failedTasksUpdating.value) return
+    failedTasksUpdating.value = true
+    try {
+      await deleteFailedGenerationTask(id)
+      failedTasks.value = failedTasks.value.filter(task => task.id !== id)
+      messageStore.show('失败记录已删除', 'success')
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '失败记录删除失败',
+      }
+      messageStore.show(requestState.value.message, 'error')
+    }
+    finally {
+      failedTasksUpdating.value = false
+    }
+  }
+
+  async function clearFailedTasks(): Promise<void> {
+    if (failedTasksUpdating.value || !failedTasks.value.length) return
+    failedTasksUpdating.value = true
+    try {
+      await clearFailedGenerationTasks()
+      failedTasks.value = []
+      messageStore.show('失败记录已全部清除', 'success')
+    }
+    catch (error) {
+      requestState.value = {
+        status: 'error',
+        message: error instanceof Error ? error.message : '失败记录清除失败',
+      }
+      messageStore.show(requestState.value.message, 'error')
+    }
+    finally {
+      failedTasksUpdating.value = false
+    }
+  }
+
   function schedulePolling(delay?: number): void {
     if (pollTimer) clearTimeout(pollTimer)
     pollTimer = null
@@ -348,6 +391,7 @@ export const useGenerationStore = defineStore('generation', () => {
     imagesLoading.value = false
     activeTasks.value = []
     failedTasks.value = []
+    failedTasksUpdating.value = false
     isSubmitting.value = false
     requestState.value = { status: 'idle' }
     apiStatus.value = 'unauthenticated'
@@ -357,6 +401,7 @@ export const useGenerationStore = defineStore('generation', () => {
     images,
     activeTasks,
     failedTasks,
+    failedTasksUpdating,
     activePrompt,
     requestState,
     apiStatus,
@@ -370,6 +415,8 @@ export const useGenerationStore = defineStore('generation', () => {
     resumeTasks,
     generate,
     retryTask,
+    removeFailedTask,
+    clearFailedTasks,
     setImageVisibility,
     removeImage,
     clearGallery,

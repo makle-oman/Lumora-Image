@@ -11,6 +11,7 @@ import {
   Pencil,
   RotateCcw,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
@@ -28,6 +29,7 @@ const {
   images,
   activeTasks,
   failedTasks,
+  failedTasksUpdating,
   isLoading,
   imagesLoading,
   hasMoreImages,
@@ -141,6 +143,14 @@ async function handleRetryTask(id: string): Promise<void> {
   await generationStore.retryTask(id)
 }
 
+async function handleDeleteFailedTask(id: string): Promise<void> {
+  if (window.confirm('确认删除这条失败记录？')) await generationStore.removeFailedTask(id)
+}
+
+async function handleClearFailedTasks(): Promise<void> {
+  if (window.confirm('确认清除所有失败记录？')) await generationStore.clearFailedTasks()
+}
+
 async function handleVisibilityChange(img: GeneratedImage, event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   visibilityUpdatingId.value = img.id
@@ -237,6 +247,19 @@ function useSamplePrompt(p: string): void {
         <!-- Disabled Action Bar -->
       </div>
 
+      <div v-if="failedTasks.length" class="failed-list-header">
+        <span>{{ failedTasks.length }} 条失败记录</span>
+        <button
+          class="clear-failed-button"
+          type="button"
+          :disabled="failedTasksUpdating"
+          @click="handleClearFailedTasks"
+        >
+          <Trash2 :size="13" />
+          <span>清除全部失败</span>
+        </button>
+      </div>
+
       <div
         v-for="task in failedTasks"
         :key="task.id"
@@ -291,11 +314,21 @@ function useSamplePrompt(p: string): void {
             class="action-pill-btn retry-action-btn"
             type="button"
             title="按原参数重新生成"
-            :disabled="isLoading"
+            :disabled="isLoading || failedTasksUpdating"
             @click="handleRetryTask(task.id)"
           >
             <RotateCcw :size="12" />
             <span>重新生成</span>
+          </button>
+          <button
+            class="action-pill-btn delete-failed-action-btn"
+            type="button"
+            title="删除失败记录"
+            :disabled="failedTasksUpdating"
+            @click="handleDeleteFailedTask(task.id)"
+          >
+            <Trash2 :size="12" />
+            <span>删除</span>
           </button>
         </div>
       </div>
@@ -615,6 +648,36 @@ function useSamplePrompt(p: string): void {
   border-radius: 16px;
 }
 
+.failed-list-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  color: #912018;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.clear-failed-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  background: #fff7f6;
+  border: 1px solid #fecdca;
+  border-radius: 6px;
+}
+
+.clear-failed-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .failed-error-panel {
   width: min(720px, 100%);
   box-sizing: border-box;
@@ -632,6 +695,11 @@ function useSamplePrompt(p: string): void {
 .retry-action-btn {
   color: #7c2d12;
   border-color: #fed7aa;
+}
+
+.delete-failed-action-btn {
+  color: #b42318;
+  border-color: #fecdca;
 }
 
 .action-pill-btn:disabled {

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  clearFailedGenerationTasks,
   confirmImageLocalized,
+  deleteFailedGenerationTask,
   generateImage,
   getActiveGenerationTasks,
   getGenerationTasks,
@@ -87,6 +89,23 @@ describe('image service', () => {
     await expect(retryGenerationTask(failedTask.id)).resolves.toMatchObject([{ id: 'task-retry' }])
     expect(fetchMock).toHaveBeenCalledWith('/api/image-tasks/task-1/retry', expect.objectContaining({
       method: 'POST',
+    }))
+  })
+
+  it('deletes one or all failed tasks', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(apiResponse(null))
+      .mockResolvedValueOnce(apiResponse(null))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await deleteFailedGenerationTask('task-1')
+    await clearFailedGenerationTasks()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/image-tasks/task-1', expect.objectContaining({
+      method: 'DELETE',
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/image-tasks', expect.objectContaining({
+      method: 'DELETE',
     }))
   })
 

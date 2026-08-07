@@ -23,7 +23,6 @@ import { useUserStore } from '../../stores/user'
 const generationStore = useGenerationStore()
 const { apiStatus } = storeToRefs(generationStore)
 const desktopStore = useDesktopStore()
-const showApiAccess = false
 
 const userStore = useUserStore()
 const isProfileMenuOpen = ref(false)
@@ -118,7 +117,7 @@ onUnmounted(() => {
         <span class="nav-label">画廊</span>
       </RouterLink>
 
-      <RouterLink v-if="showApiAccess" class="nav-item mobile-only" to="/api">
+      <RouterLink class="nav-item mobile-only" to="/api">
         <TerminalSquare class="nav-icon" :size="21" :stroke-width="1.8" />
         <span class="nav-label">API</span>
       </RouterLink>
@@ -136,7 +135,6 @@ onUnmounted(() => {
 
     <div class="utility-list">
       <RouterLink
-        v-if="showApiAccess"
         class="utility-item"
         to="/api"
         :class="`is-${apiStatus}`"
@@ -723,7 +721,7 @@ onUnmounted(() => {
 
   .nav-list {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0;
     height: 100%;
     margin: 0;

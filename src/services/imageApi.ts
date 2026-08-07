@@ -152,6 +152,14 @@ export async function retryGenerationTask(id: string): Promise<GenerationTask[]>
   })).items
 }
 
+export async function deleteFailedGenerationTask(id: string): Promise<void> {
+  await requestJson(`/api/image-tasks/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' })
+}
+
+export async function clearFailedGenerationTasks(): Promise<void> {
+  await requestJson('/api/image-tasks', z.null(), { method: 'DELETE' })
+}
+
 export async function getPublicGallery(input: {
   query?: string
   category?: string
